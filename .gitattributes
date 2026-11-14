@@ -1,2 +1,5 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Shell scripts must keep Unix line endings, or they will not run on the Kindle.
+*.sh text eol=lf
+*.png binary
+*.otf binary
+*.ttf binary

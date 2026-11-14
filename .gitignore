@@ -1,0 +1,8 @@
+# Personal settings: your address, coordinates and email.
+/server/config.php
+
+# Downloaded forecasts.
+/server/cache/
+
+# Settings saved from the admin page, including the password hash.
+/server/data/
