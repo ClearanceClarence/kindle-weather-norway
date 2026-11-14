@@ -72,19 +72,19 @@ function translate_admin_page(string $html): string
     // The script first: its quoted texts are swapped as they stand.
     $html = preg_replace_callback(
         '~<script\b[^>]*>.*?</script>~s',
-        fn(array $m) => strtr($m[0], $english['script']),
+        fn(array $match) => strtr($match[0], $english['script']),
         $html
     ) ?? $html;
 
     // Texts between tags, keeping the spaces around them.
     $html = preg_replace_callback(
         '~>([^<>]+)<~',
-        function (array $m) use ($text): string {
-            $trimmed = trim($m[1]);
+        function (array $match) use ($text): string {
+            $trimmed = trim($match[1]);
             if ($trimmed === '' || !isset($text[$trimmed])) {
-                return $m[0];
+                return $match[0];
             }
-            return '>' . str_replace($trimmed, htmlspecialchars($text[$trimmed], ENT_NOQUOTES), $m[1]) . '<';
+            return '>' . str_replace($trimmed, htmlspecialchars($text[$trimmed], ENT_NOQUOTES), $match[1]) . '<';
         },
         $html
     ) ?? $html;
@@ -92,7 +92,7 @@ function translate_admin_page(string $html): string
     // Attributes that hold text for the reader.
     return preg_replace_callback(
         '~\b(placeholder|aria-label|alt|title)="([^"]*)"~',
-        fn(array $m) => isset($text[$m[2]]) ? $m[1] . '="' . htmlspecialchars($text[$m[2]]) . '"' : $m[0],
+        fn(array $match) => isset($text[$match[2]]) ? $match[1] . '="' . htmlspecialchars($text[$match[2]]) . '"' : $match[0],
         $html
     ) ?? $html;
 }

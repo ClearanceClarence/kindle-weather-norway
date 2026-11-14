@@ -180,7 +180,7 @@ function kartverket_map(array $config, int $radius, int $size): ?\GdImage
 /** The coarse fallback map: light gray land, white sea and lakes. Null without map/coast.json. */
 function coast_map(array $config, int $radius, int $size): ?\GdImage
 {
-    $coast = json_decode((string) @file_get_contents(dirname($config['icon_dir']) . '/map/coast.json'), true);
+    $coast = json_decode(read_file(dirname($config['icon_dir']) . '/map/coast.json'), true);
     if (!is_array($coast)) {
         return null;
     }
@@ -228,7 +228,7 @@ function coast_map(array $config, int $radius, int $size): ?\GdImage
  */
 function nearby_airports(array $config, int $radius): array
 {
-    $data = json_decode((string) @file_get_contents(dirname($config['icon_dir']) . '/map/airports.json'), true);
+    $data = json_decode(read_file(dirname($config['icon_dir']) . '/map/airports.json'), true);
     $lat = (float) $config['lat'];
     $lon = (float) $config['lon'];
     $reach = $radius / 111.0;                               // the radius in degrees of latitude

@@ -19,14 +19,14 @@ Skjermene og innstillingssiden er på norsk. Koden og kommentarene er på engels
     <td align="center"><b>Stor</b><br>leses fra andre siden av rommet</td>
     <td align="center"><b>Graf</b><br>de neste 24 timene</td>
     <td align="center"><b>Uke</b><br>sju dager fram</td>
-    <td align="center"><b>Timer</b><br>time for time, to sider</td>
+    <td align="center"><b>Timer</b><br>time for time, tre sider</td>
   </tr>
 </table>
 
 ## Dette får du
 
-- Fem skjermer du bytter mellom med fanene nederst.
-- Været nå med vindrose og vindkast, soloppgang og solnedgang, et bilde av månen i riktig fase, og UV-indeks.
+- Fem luftige skjermer du bytter mellom med fanene nederst.
+- Været nå med vindretning og vindkast, soloppgang og solnedgang, et bilde av månen i riktig fase, og UV-indeks.
 - En radarstripe som viser om det kommer nedbør de neste 90 minuttene.
 - Farevarsler fra Meteorologisk institutt, som banner og varseltrekant.
 - Et meteogram for 24 timer med temperatur, «føles som», nedbør og vind.
@@ -142,7 +142,7 @@ Det stegene over ordner for deg, hvis du heller vil bruke filer:
 
 - **Bytt skjerm:** trykk på en fane nederst. Kindle husker valget.
 - **Oppdater nå:** trykk på øvre halvdel av skjermen.
-- **Bla i timene:** på fanen Timer sveiper du opp for de neste tolv timene og ned for de første tolv. Et trykk på nedre halvdel gjør det samme. En vanlig oppdatering går tilbake til første side.
+- **Bla i timene:** fanen Timer har tre sider med åtte timer på hver. Sveip opp for de neste timene og ned for de forrige. Et trykk på nedre halvdel går til neste side, og fra den siste tilbake til den første. En vanlig oppdatering går tilbake til første side.
 - **Se på fly:** trykk på flyet nederst til høyre for å åpne «Fly over oss». Trykk på et fly på kartet for å se mer om det. Skjermen oppdateres hvert minutt og går tilbake til været av seg selv etter et kvarter. «Tilbake til været» nederst lukker den med en gang.
 - **Lukk:** trykk på det svake krysset øverst til høyre. Kindle viser en avskjedsskjerm mens dens eget grensesnitt starter igjen, noe som tar omtrent et halvt minutt.
 

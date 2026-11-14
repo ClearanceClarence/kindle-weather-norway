@@ -13,53 +13,53 @@ declare(strict_types=1);
  * would be the level at the time of the last contact.
  */
 
-function render_offline(array $m, array $req, array $config): string
+function render_offline(array $model, array $request, array $config): string
 {
-    $c = new Canvas($config['width'], $config['height'], $config['font_dir']);
-    draw_header($c, $m['place'], $m['date'], null, $req['touch']);
+    $canvas = new Canvas($config['width'], $config['height'], $config['font_dir']);
+    draw_header($canvas, $model['place'], $model['date'], null, $request['touch']);
 
     // The notice: a black strip, like a weather alert.
-    $c->rect(LEFT, 166, CONTENT, 92, INK);
-    $c->warning(LEFT + 24, 189, 46, PAPER, INK);
-    $c->text(t('Ingen forbindelse'), LEFT + 92, 212, 46, 'Bold', PAPER);
-    $c->text(t('Prøver igjen hvert ') . $req['interval'] . t('. minutt'), RIGHT - 24, 214, 28, 'Medium', PAPER, 'right');
+    $canvas->rect(LEFT, 166, CONTENT, 92, INK);
+    $canvas->warning(LEFT + 24, 189, 46, PAPER, INK);
+    $canvas->text(t('Ingen forbindelse'), LEFT + 92, 212, 46, 'Bold', PAPER);
+    $canvas->text(t('Prøver igjen hvert ') . $request['interval'] . t('. minutt'), RIGHT - 24, 214, 28, 'Medium', PAPER, 'right');
 
     // The weather as it was at the last contact.
-    $c->icon($m['sym']['icon'], LEFT, 284, 124, 1.7);
-    $tempSize = $c->fit($m['temp'], 124, 'Bold', 300);
-    $tempWidth = $c->textWidth($m['temp'], $tempSize, 'Bold');
-    $c->text($m['temp'], RIGHT, 346, $tempSize, 'Bold', INK, 'right');
+    $canvas->icon($model['sym']['icon'], LEFT, 284, 124, 1.7);
+    $tempSize = $canvas->fit($model['temp'], 124, 'Bold', 300);
+    $tempWidth = $canvas->textWidth($model['temp'], $tempSize, 'Bold');
+    $canvas->text($model['temp'], RIGHT, 346, $tempSize, 'Bold', INK, 'right');
     $room = CONTENT - 156 - $tempWidth - 30;
-    $c->text($m['sym']['label'], LEFT + 156, 322, $c->fit($m['sym']['label'], 56, 'Bold', $room), 'Bold');
-    $note = t('Sist kjente varsel') . ' · ' . t('hentet kl. ') . $m['updated'];
-    $c->text($note, LEFT + 156, 378, $c->fit($note, 30, 'Medium', $room), 'Medium', GRAY);
+    $canvas->text($model['sym']['label'], LEFT + 156, 322, $canvas->fit($model['sym']['label'], 56, 'Bold', $room), 'Bold');
+    $note = t('Sist kjente varsel') . ' · ' . t('hentet kl. ') . $model['updated'];
+    $canvas->text($note, LEFT + 156, 378, $canvas->fit($note, 30, 'Medium', $room), 'Medium', GRAY);
 
     // The hours ahead, with clock times.
     $top = 440;
-    $c->rect(LEFT, $top, CONTENT, 3, INK);
-    $c->text(t('Timene framover'), LEFT, $top + 34, 28, 'Medium', GRAY);
-    $c->text(t('Vind (kast) m/s'), RIGHT, $top + 34, 28, 'Medium', GRAY, 'right');
-    $rowHeight = 68;
+    $canvas->rect(LEFT, $top, CONTENT, 3, INK);
+    $canvas->text(t('Timene framover'), LEFT, $top + 34, 28, 'Medium', GRAY);
+    $canvas->text(t('Vind (kast) m/s'), RIGHT, $top + 34, 28, 'Medium', GRAY, 'right');
+    $rowHeight = 90;
     $y = $top + 62;
-    foreach (array_slice($m['hours'], 0, 12) as $i => $h) {
+    foreach (array_slice($model['hours'], 0, 9) as $i => $hour) {
         $cy = $y + $rowHeight / 2;
-        $c->rect(LEFT, $y, CONTENT, 2, LINE);
-        $c->text($h['hour'], LEFT, $cy + 2, 38, 'Bold');
-        if ($i === 0 || $h['hour'] === '00') {
-            $c->text($h['day'], LEFT + 62, $cy + 4, 24, 'Medium', GRAY);
+        $canvas->rect(LEFT, $y, CONTENT, 2, LINE);
+        $canvas->text($hour['hour'], LEFT, $cy + 2, 42, 'Bold');
+        if ($i === 0 || $hour['hour'] === '00') {
+            $canvas->text($hour['day'], LEFT + 70, $cy + 4, 26, 'Medium', GRAY);
         }
-        $c->icon($h['sym']['icon'], LEFT + 150, $cy - 25, 50, 1.7);
-        $c->text($h['temp'], LEFT + 370, $cy + 2, 40, 'Bold', INK, 'right');
-        $wet = $h['mmRaw'] >= 0.05;
-        $c->text($h['mm'], LEFT + 640, $cy + 2, 32, $wet ? 'Bold' : 'Medium', $wet ? INK : GRAY, 'right');
-        $c->arrow(RIGHT - 20, $cy + 2, 17, $h['dir'], 4.5);
-        $gust = $h['gust'] === null ? '' : ' (' . $h['gust'] . ')';
-        $c->text($gust, RIGHT - 54, $cy + 4, 28, 'Medium', GRAY, 'right');
-        $c->text((string) $h['wind'], RIGHT - 54 - $c->textWidth($gust, 28, 'Medium'), $cy + 2, 34, 'Bold', INK, 'right');
+        $canvas->icon($hour['sym']['icon'], LEFT + 160, $cy - 30, 60, 1.7);
+        $canvas->text($hour['temp'], LEFT + 380, $cy + 2, 44, 'Bold', INK, 'right');
+        $wet = $hour['mmRaw'] >= 0.05;
+        $canvas->text($hour['mm'], LEFT + 650, $cy + 2, 36, $wet ? 'Bold' : 'Medium', $wet ? INK : GRAY, 'right');
+        $canvas->pointer(RIGHT - 18, $cy + 2, 18, $hour['dir']);
+        $gust = $hour['gust'] === null ? '' : ' (' . $hour['gust'] . ')';
+        $canvas->text($gust, RIGHT - 56, $cy + 4, 30, 'Medium', GRAY, 'right');
+        $canvas->text((string) $hour['wind'], RIGHT - 56 - $canvas->textWidth($gust, 30, 'Medium'), $cy + 2, 38, 'Bold', INK, 'right');
         $y += $rowHeight;
     }
-    $c->rect(LEFT, $y, CONTENT, 3, INK);
+    $canvas->rect(LEFT, $y, CONTENT, 3, INK);
 
-    draw_footer($c, $m['updated']);
-    return $c->png();
+    draw_footer($canvas, $model['updated']);
+    return $canvas->png();
 }

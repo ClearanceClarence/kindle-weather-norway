@@ -107,22 +107,22 @@ function save_store(string $serverDir, array $store): bool
  * Checks values submitted on the admin page. Returns the cleaned settings
  * and fills $errors with one message per problem (in the language in use, for the page).
  */
-function validate_settings(array $in, array &$errors, array $fonts = FONTS): array
+function validate_settings(array $input, array &$errors, array $fonts = FONTS): array
 {
-    $text = function (string $key, int $max) use ($in): string {
-        $value = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) ($in[$key] ?? '')) ?? '');
+    $text = function (string $key, int $max) use ($input): string {
+        $value = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) ($input[$key] ?? '')) ?? '');
         return mb_substr($value, 0, $max);
     };
-    $int = function (string $key, int $min, int $max, string $label) use ($in, &$errors): int {
-        $raw = trim((string) ($in[$key] ?? ''));
+    $int = function (string $key, int $min, int $max, string $label) use ($input, &$errors): int {
+        $raw = trim((string) ($input[$key] ?? ''));
         if (!preg_match('/^\d{1,4}$/', $raw) || (int) $raw < $min || (int) $raw > $max) {
             $errors[] = sprintf(t('%s må være et tall fra %d til %d.'), t($label), $min, $max);
             return (int) SETTING_DEFAULTS[$key];
         }
         return (int) $raw;
     };
-    $coordinate = function (string $key, float $limit, string $label) use ($in, &$errors): ?float {
-        $raw = str_replace(',', '.', trim((string) ($in[$key] ?? '')));
+    $coordinate = function (string $key, float $limit, string $label) use ($input, &$errors): ?float {
+        $raw = str_replace(',', '.', trim((string) ($input[$key] ?? '')));
         if (!is_numeric($raw) || abs((float) $raw) > $limit) {
             $errors[] = sprintf(t('%s må være et tall mellom -%d og %d.'), t($label), $limit, $limit);
             return null;
@@ -144,28 +144,28 @@ function validate_settings(array $in, array &$errors, array $fonts = FONTS): arr
         $errors[] = t('Kontakt mangler. Meteorologisk institutt krever e-post eller nettsted.');
     }
 
-    $out['icon_set'] = (string) ($in['icon_set'] ?? '');
+    $out['icon_set'] = (string) ($input['icon_set'] ?? '');
     if (!isset(ICON_SETS[$out['icon_set']])) {
         $errors[] = t('Ukjent ikonsett.');
         $out['icon_set'] = SETTING_DEFAULTS['icon_set'];
     }
 
-    $out['language'] = isset(LANGUAGES[$in['language'] ?? '']) ? (string) $in['language'] : SETTING_DEFAULTS['language'];
+    $out['language'] = isset(LANGUAGES[$input['language'] ?? '']) ? (string) $input['language'] : SETTING_DEFAULTS['language'];
 
-    $out['font'] = (string) ($in['font'] ?? '');
+    $out['font'] = (string) ($input['font'] ?? '');
     if (!isset($fonts[$out['font']])) {
         $errors[] = t('Ukjent skrift.');
         $out['font'] = SETTING_DEFAULTS['font'];
     }
 
     // Tabs keep the order of TAB_LABELS; at least one must be on.
-    $chosen = array_map('strval', (array) ($in['tabs'] ?? []));
+    $chosen = array_map('strval', (array) ($input['tabs'] ?? []));
     $out['tabs'] = array_values(array_filter(array_keys(TAB_LABELS), fn($key) => in_array($key, $chosen, true)));
     if ($out['tabs'] === []) {
         $errors[] = t('Velg minst én fane.');
         $out['tabs'] = SETTING_DEFAULTS['tabs'];
     }
-    $out['default_view'] = (string) ($in['default_view'] ?? '');
+    $out['default_view'] = (string) ($input['default_view'] ?? '');
     if (!in_array($out['default_view'], $out['tabs'], true)) {
         $out['default_view'] = $out['tabs'][0];
     }
@@ -175,9 +175,9 @@ function validate_settings(array $in, array &$errors, array $fonts = FONTS): arr
     $out['quiet_end']          = $int('quiet_end', 0, 23, 'Stilletid til');
     $out['full_refresh_every'] = $int('full_refresh_every', 1, 20, 'Full oppfrisking');
     $out['light_level']        = $int('light_level', 0, 24, 'Lysstyrke');
-    $out['flights']            = !empty($in['flights']);
+    $out['flights']            = !empty($input['flights']);
     $out['flight_radius']      = $int('flight_radius', 10, 200, 'Rekkevidde for fly');
-    $out['aurora']             = !empty($in['aurora']);
+    $out['aurora']             = !empty($input['aurora']);
     $out['aurora_kp']          = $int('aurora_kp', 3, 9, 'Kp-grense');
     $out['light_from']         = $int('light_from', 0, 24, 'Lys fra');
     $out['light_to']           = $int('light_to', 0, 24, 'Lys til');

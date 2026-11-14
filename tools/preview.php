@@ -54,6 +54,7 @@ $screens = [
     'week'        => ['view=week&batt=84&x=1', false],
     'hours'       => ['view=hours&batt=84&x=1', false],
     'hours-2'     => ['view=hours&page=1&batt=84&x=1', false],
+    'hours-3'     => ['view=hours&page=2&batt=84&x=1', false],
     'alert'       => ['view=now&batt=84&x=1', true],
     'aurora'      => ['view=now&batt=84&x=1', 'aurora'],
     'low-battery' => ['view=now&batt=12&x=1', false],
@@ -71,7 +72,7 @@ foreach ($screens as $name => [$queryString, $alert]) {
 
 // The flight screen: just opened, after a tap on the helicopter, and an empty sky.
 // It is drawn on the coarse fallback map; a real server uses Kartverket's map.
-touch(sprintf('%s/map_v3_%.4F_%.4F_%d_%d_kartverket.failed', $config['cache_dir'], $config['lat'], $config['lon'], $config['flight_radius'], 1120));
+touch(sprintf('%s/map_v3_%.4F_%.4F_%d_%d_kartverket.failed', $config['cache_dir'], $config['lat'], $config['lon'], $config['flight_radius'], 4 * MAP_RADIUS));
 write_sample_flights($config);
 file_put_contents("$out/flights.png", render_flight_request($config, ['batt' => '84', 'x' => '1', 'open' => '1']));
 $state = flight_state($config);

@@ -24,6 +24,19 @@ foreach (glob(__DIR__ . '/views/*.php') as $view) {
 }
 require_once __DIR__ . '/app.php';
 
+/** The contents of a local file, or '' when it does not exist. */
+function read_file(string $file): string
+{
+    return is_file($file) ? (string) file_get_contents($file) : '';
+}
+
+function remove_file(string $file): void
+{
+    if (is_file($file)) {
+        unlink($file);
+    }
+}
+
 /**
  * Puts the configuration together and applies the time zone. Settings come
  * from, later ones winning: the defaults, config.php, and the admin page.

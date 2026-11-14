@@ -39,18 +39,18 @@ final class Canvas
     public static string $iconDir = '';
 
     private \GdImage $im;
-    private int $s = 2;
+    private int $scale = 2;
     private array $colors = [];
 
     public function __construct(private int $w, private int $h, private string $fontDir)
     {
-        $this->im = imagecreatetruecolor($w * $this->s, $h * $this->s);
-        imagefilledrectangle($this->im, 0, 0, $w * $this->s, $h * $this->s, $this->color(PAPER));
+        $this->im = imagecreatetruecolor($w * $this->scale, $h * $this->scale);
+        imagefilledrectangle($this->im, 0, 0, $w * $this->scale, $h * $this->scale, $this->color(PAPER));
     }
 
-    private function color(int $g): int
+    private function color(int $gray): int
     {
-        return $this->colors[$g] ??= imagecolorallocate($this->im, $g, $g, $g);
+        return $this->colors[$gray] ??= imagecolorallocate($this->im, $gray, $gray, $gray);
     }
 
     private function font(string $weight): string
@@ -58,33 +58,33 @@ final class Canvas
         return self::$typeface[$weight] ?? $this->fontDir . '/' . FONTS['inter'][$weight];
     }
 
-    public function rect(float $x, float $y, float $w, float $h, int $g): void
+    public function rect(float $x, float $y, float $w, float $h, int $gray): void
     {
-        $s = $this->s;
+        $scale = $this->scale;
         imagefilledrectangle(
             $this->im,
-            (int) round($x * $s),
-            (int) round($y * $s),
-            (int) round(($x + $w) * $s) - 1,
-            (int) round(($y + $h) * $s) - 1,
-            $this->color($g)
+            (int) round($x * $scale),
+            (int) round($y * $scale),
+            (int) round(($x + $w) * $scale) - 1,
+            (int) round(($y + $h) * $scale) - 1,
+            $this->color($gray)
         );
     }
 
-    public function disc(float $cx, float $cy, float $r, int $g): void
+    public function disc(float $cx, float $cy, float $r, int $gray): void
     {
-        $s = $this->s;
-        $d = max(1, (int) round($r * 2 * $s));
-        imagefilledellipse($this->im, (int) round($cx * $s), (int) round($cy * $s), $d, $d, $this->color($g));
+        $scale = $this->scale;
+        $d = max(1, (int) round($r * 2 * $scale));
+        imagefilledellipse($this->im, (int) round($cx * $scale), (int) round($cy * $scale), $d, $d, $this->color($gray));
     }
 
     /** Draws a round-capped stroke through the given points by stamping discs. */
-    public function stroke(array $pts, float $sw, int $g): void
+    public function stroke(array $pts, float $strokeWidth, int $gray): void
     {
-        $step = max(0.25, $sw / 6);
+        $step = max(0.25, $strokeWidth / 6);
         $n = count($pts);
         if ($n === 1) {
-            $this->disc($pts[0][0], $pts[0][1], $sw / 2, $g);
+            $this->disc($pts[0][0], $pts[0][1], $strokeWidth / 2, $gray);
             return;
         }
         for ($i = 0; $i < $n - 1; $i++) {
@@ -94,7 +94,7 @@ final class Canvas
             $count = max(1, (int) ceil($len / $step));
             for ($k = 0; $k <= $count; $k++) {
                 $f = $k / $count;
-                $this->disc($x1 + ($x2 - $x1) * $f, $y1 + ($y2 - $y1) * $f, $sw / 2, $g);
+                $this->disc($x1 + ($x2 - $x1) * $f, $y1 + ($y2 - $y1) * $f, $strokeWidth / 2, $gray);
             }
         }
     }
@@ -102,8 +102,8 @@ final class Canvas
     public function textWidth(string $text, float $size, string $weight): float
     {
         $text = strtr($text, self::$typeface['replace'] ?? []);
-        $b = imagettfbbox($size * $this->s * 0.75 * (self::$typeface['scale'] ?? 1.0), 0, $this->font($weight), $text);
-        return ($b[2] - $b[0]) / $this->s;
+        $b = imagettfbbox($size * $this->scale * 0.75 * (self::$typeface['scale'] ?? 1.0), 0, $this->font($weight), $text);
+        return ($b[2] - $b[0]) / $this->scale;
     }
 
     /** Largest size up to $size at which the text fits in $maxWidth. */
@@ -123,33 +123,33 @@ final class Canvas
         float $y,
         float $size,
         string $weight,
-        int $g = INK,
+        int $gray = INK,
         string $align = 'left',
         string $valign = 'middle'
     ): void {
-        $s = $this->s;
+        $scale = $this->scale;
         $text = strtr($text, self::$typeface['replace'] ?? []);
-        $pt = $size * $s * 0.75 * (self::$typeface['scale'] ?? 1.0);
+        $pt = $size * $scale * 0.75 * (self::$typeface['scale'] ?? 1.0);
         $font = $this->font($weight);
         $b = imagettfbbox($pt, 0, $font, $text);
         $px = match ($align) {
-            'right'  => $x * $s - $b[2],
-            'center' => $x * $s - ($b[0] + $b[2]) / 2,
-            default  => $x * $s - $b[0],
+            'right'  => $x * $scale - $b[2],
+            'center' => $x * $scale - ($b[0] + $b[2]) / 2,
+            default  => $x * $scale - $b[0],
         };
-        $baseline = $valign === 'baseline' ? $y * $s : ($y + 0.364 * $size) * $s;
-        imagettftext($this->im, $pt, 0, (int) round($px), (int) round($baseline), $this->color($g), $font, $text);
+        $baseline = $valign === 'baseline' ? $y * $scale : ($y + 0.364 * $size) * $scale;
+        imagettftext($this->im, $pt, 0, (int) round($px), (int) round($baseline), $this->color($gray), $font, $text);
     }
 
     // --- icons -------------------------------------------------------------
     // Icons are defined on a 24x24 grid, like the SVG icons in the design.
 
     /** Cloud outline. ($tx,$ty,$k) place and scale it within the icon grid. */
-    private function cloud(float $x, float $y, float $u, float $sw, float $tx = 0, float $ty = 0, float $k = 1, bool $mask = false): void
+    private function cloud(float $x, float $y, float $u, float $strokeWidth, float $tx = 0, float $ty = 0, float $k = 1, bool $mask = false): void
     {
         $circles = [[7, 10, 4], [11.6, 8, 5.5], [16.07, 10.6, 3.5]];
         $P = fn(float $ux, float $uy) => [$x + ($tx + $ux * $k) * $u, $y + ($ty + $uy * $k) * $u];
-        $half = $sw / 2;
+        $half = $strokeWidth / 2;
         $passes = $mask ? [[$half + 0.9 * $u, PAPER]] : [];
         $passes[] = [$half, INK];
         $passes[] = [-$half, self::$iconSet === 'duotone' ? CLOUD_FILL : PAPER];
@@ -164,21 +164,21 @@ final class Canvas
         }
     }
 
-    private function ring(float $cx, float $cy, float $r, float $sw, int $fill = PAPER): void
+    private function ring(float $cx, float $cy, float $r, float $strokeWidth, int $fill = PAPER): void
     {
-        $this->disc($cx, $cy, $r + $sw / 2, INK);
-        $this->disc($cx, $cy, $r - $sw / 2, $fill);
+        $this->disc($cx, $cy, $r + $strokeWidth / 2, INK);
+        $this->disc($cx, $cy, $r - $strokeWidth / 2, $fill);
     }
 
-    private function sunAt(float $cx, float $cy, float $r, float $rayIn, float $rayOut, float $sw): void
+    private function sunAt(float $cx, float $cy, float $r, float $rayIn, float $rayOut, float $strokeWidth): void
     {
-        $this->ring($cx, $cy, $r, $sw, self::$iconSet === 'duotone' ? SUN_FILL : PAPER);
+        $this->ring($cx, $cy, $r, $strokeWidth, self::$iconSet === 'duotone' ? SUN_FILL : PAPER);
         for ($i = 0; $i < 8; $i++) {
             $a = $i * M_PI / 4;
             $this->stroke([
                 [$cx + cos($a) * $rayIn, $cy + sin($a) * $rayIn],
                 [$cx + cos($a) * $rayOut, $cy + sin($a) * $rayOut],
-            ], $sw, INK);
+            ], $strokeWidth, INK);
         }
     }
 
@@ -197,7 +197,7 @@ final class Canvas
      * Fills the part of disc A (center $ax,$ay, radius $ar) that lies outside
      * disc B, one thin row at a time.
      */
-    private function crescent(float $ax, float $ay, float $ar, float $bx, float $by, float $br, int $g): void
+    private function crescent(float $ax, float $ay, float $ar, float $bx, float $by, float $br, int $gray): void
     {
         for ($y = $ay - $ar; $y <= $ay + $ar; $y += 0.5) {
             $a = $ar * $ar - ($y - $ay) ** 2;
@@ -208,17 +208,17 @@ final class Canvas
             $a2 = $ax + sqrt($a);
             $b = $br * $br - ($y - $by) ** 2;
             if ($b <= 0) {
-                $this->rect($a1, $y, $a2 - $a1, 0.5, $g);
+                $this->rect($a1, $y, $a2 - $a1, 0.5, $gray);
                 continue;
             }
             // B covers the span [$b1, $b2] of this row; draw what is left of A on either side.
             $b1 = $bx - sqrt($b);
             $b2 = $bx + sqrt($b);
             if ($b1 > $a1) {
-                $this->rect($a1, $y, min($a2, $b1) - $a1, 0.5, $g);
+                $this->rect($a1, $y, min($a2, $b1) - $a1, 0.5, $gray);
             }
             if ($b2 < $a2) {
-                $this->rect(max($a1, $b2), $y, $a2 - max($a1, $b2), 0.5, $g);
+                $this->rect(max($a1, $b2), $y, $a2 - max($a1, $b2), 0.5, $gray);
             }
         }
     }
@@ -239,17 +239,17 @@ final class Canvas
             if ($cache[$file] === false) {
                 continue;
             }
-            $s = $this->s;
+            $scale = $this->scale;
             imagealphablending($this->im, true);
             imagecopyresampled(
                 $this->im,
                 $cache[$file],
-                (int) round($x * $s),
-                (int) round($y * $s),
+                (int) round($x * $scale),
+                (int) round($y * $scale),
                 0,
                 0,
-                (int) round($size * $s),
-                (int) round($size * $s),
+                (int) round($size * $scale),
+                (int) round($size * $scale),
                 imagesx($cache[$file]),
                 imagesy($cache[$file])
             );
@@ -264,10 +264,10 @@ final class Canvas
      * $icon is what parse_symbol() returns as 'icon': the kind of weather,
      * optionally followed by ":" and MET's own symbol code, for example
      * "rain:lightrainshowers_day". Sets with an icon per code use the code;
-     * the others use the kind. $sw is the stroke width in icon-grid units
+     * the others use the kind. $strokeWidth is the stroke width in icon-grid units
      * and only matters for the sets drawn by code.
      */
-    public function icon(string $icon, float $x, float $y, float $size, float $sw): void
+    public function icon(string $icon, float $x, float $y, float $size, float $strokeWidth): void
     {
         [$kind, $code] = array_pad(explode(':', $icon, 2), 2, '');
         $drawnByCode = in_array(self::$iconSet, ['outline', 'duotone'], true);
@@ -276,7 +276,7 @@ final class Canvas
             return;
         }
         $u = $size / 24;
-        $w = $sw * $u;
+        $w = $strokeWidth * $u;
         $P = fn(float $ux, float $uy) => [$x + $ux * $u, $y + $uy * $u];
         $lines = function (array $segments) use ($P, $w): void {
             foreach ($segments as $seg) {
@@ -349,14 +349,14 @@ final class Canvas
         }
     }
 
-    public function polygon(array $pts, int $g): void
+    public function polygon(array $pts, int $gray): void
     {
         $flat = [];
         foreach ($pts as [$px, $py]) {
-            $flat[] = (int) round($px * $this->s);
-            $flat[] = (int) round($py * $this->s);
+            $flat[] = (int) round($px * $this->scale);
+            $flat[] = (int) round($py * $this->scale);
         }
-        imagefilledpolygon($this->im, $flat, $this->color($g));
+        imagefilledpolygon($this->im, $flat, $this->color($gray));
     }
 
     /** Draws a picture file (PNG) into the box at ($x,$y), $w wide and $h high. */
@@ -366,16 +366,16 @@ final class Canvas
         if ($picture === false) {
             return;
         }
-        $s = $this->s;
+        $scale = $this->scale;
         imagecopyresampled(
             $this->im,
             $picture,
-            (int) round($x * $s),
-            (int) round($y * $s),
+            (int) round($x * $scale),
+            (int) round($y * $scale),
             0,
             0,
-            (int) round($w * $s),
-            (int) round($h * $s),
+            (int) round($w * $scale),
+            (int) round($h * $scale),
             imagesx($picture),
             imagesy($picture)
         );
@@ -394,7 +394,7 @@ final class Canvas
      *   small    light plane with one propeller on the nose
      *   fighter  delta-winged military jet
      */
-    public function plane(float $cx, float $cy, float $size, float $track, int $g = INK, string $kind = 'jet2'): void
+    public function plane(float $cx, float $cy, float $size, float $track, int $gray = INK, string $kind = 'jet2'): void
     {
         // Each shape is the right half of the aircraft, nose (y = -1) to tail
         // (y = 1); the left half is its mirror image. "body" is the outline;
@@ -431,28 +431,28 @@ final class Canvas
         };
         $outline = $shape['body'];
         foreach (array_reverse($shape['body']) as [$x, $y]) {
-            if ($x != 0) {
+            if ((float) $x !== 0.0) {
                 $outline[] = [-$x, $y];
             }
         }
-        $this->polygon($place($outline), $g);
+        $this->polygon($place($outline), $gray);
         foreach ($shape['parts'] as [$x1, $y1, $x2, $y2]) {
-            $this->polygon($place([[$x1, $y1], [$x2, $y1], [$x2, $y2], [$x1, $y2]]), $g);
-            $this->polygon($place([[-$x1, $y1], [-$x2, $y1], [-$x2, $y2], [-$x1, $y2]]), $g);
+            $this->polygon($place([[$x1, $y1], [$x2, $y1], [$x2, $y2], [$x1, $y2]]), $gray);
+            $this->polygon($place([[-$x1, $y1], [-$x2, $y1], [-$x2, $y2], [-$x1, $y2]]), $gray);
         }
     }
 
     /** A helicopter seen from above: a body with crossed rotor blades. $size is half the rotor's width. */
-    public function rotor(float $cx, float $cy, float $size, int $g = INK): void
+    public function rotor(float $cx, float $cy, float $size, int $gray = INK): void
     {
-        $this->disc($cx, $cy, $size * 0.42, $g);
+        $this->disc($cx, $cy, $size * 0.42, $gray);
         $d = $size * 0.74;
-        $this->stroke([[$cx - $d, $cy - $d], [$cx + $d, $cy + $d]], max(3, $size * 0.16), $g);
-        $this->stroke([[$cx - $d, $cy + $d], [$cx + $d, $cy - $d]], max(3, $size * 0.16), $g);
+        $this->stroke([[$cx - $d, $cy - $d], [$cx + $d, $cy + $d]], max(3, $size * 0.16), $gray);
+        $this->stroke([[$cx - $d, $cy + $d], [$cx + $d, $cy - $d]], max(3, $size * 0.16), $gray);
     }
 
     /** A four-pointed star with a small companion: the mark for the aurora notice. */
-    public function sparkle(float $cx, float $cy, float $r, int $g): void
+    public function sparkle(float $cx, float $cy, float $r, int $gray): void
     {
         foreach ([[$cx - 4, $cy + 2, $r], [$cx + $r * 0.72, $cy - $r * 0.62, $r * 0.42]] as [$x, $y, $size]) {
             $pts = [];
@@ -460,35 +460,34 @@ final class Canvas
                 $d = $i % 2 === 0 ? $size : $size * 0.3;
                 $pts[] = [$x + sin($i * M_PI / 4) * $d, $y - cos($i * M_PI / 4) * $d];
             }
-            $this->polygon($pts, $g);
+            $this->polygon($pts, $gray);
         }
     }
 
     /**
-     * Wind rose: a compass ring with N marked and an arrow that points the way
-     * the wind is blowing. $fromDeg is where the wind comes from (0 = north).
+     * Wind pointer: a solid dart that points the way the wind is blowing.
+     * $len is half its length; $fromDeg is where the wind comes from (0 = north).
      */
-    public function windrose(float $cx, float $cy, float $r, float $fromDeg): void
+    public function pointer(float $cx, float $cy, float $len, float $fromDeg, int $gray = INK): void
     {
-        $this->ring($cx, $cy, $r, 4);
-        for ($i = 0; $i < 8; $i++) {
-            $a = deg2rad($i * 45);
-            $inner = $r - ($i % 2 === 0 ? 11 : 6);
-            $this->stroke([
-                [$cx + sin($a) * $inner, $cy - cos($a) * $inner],
-                [$cx + sin($a) * ($r - 2), $cy - cos($a) * ($r - 2)],
-            ], $i % 2 === 0 ? 4 : 3, INK);
-        }
-        $this->text('N', $cx, $cy - $r - 16, 24, 'Bold', INK, 'center');
-
-        $this->arrow($cx, $cy, $r * 0.62, $fromDeg, 7);
+        $b = deg2rad($fromDeg + 180);
+        $dx = sin($b);
+        $dy = -cos($b);
+        $w = $len * 0.6;                       // half the width at the tail
+        $tail = [$cx - $dx * $len, $cy - $dy * $len];
+        $this->polygon([
+            [$cx + $dx * $len, $cy + $dy * $len],
+            [$tail[0] - $dy * $w, $tail[1] + $dx * $w],
+            [$cx - $dx * $len * 0.38, $cy - $dy * $len * 0.38],      // the notch in the tail
+            [$tail[0] + $dy * $w, $tail[1] - $dx * $w],
+        ], $gray);
     }
 
     /**
      * Wind arrow centered on ($cx,$cy), pointing the way the wind blows.
      * $len is half its length; $fromDeg is where the wind comes from.
      */
-    public function arrow(float $cx, float $cy, float $len, float $fromDeg, float $sw): void
+    public function arrow(float $cx, float $cy, float $len, float $fromDeg, float $strokeWidth): void
     {
         $b = deg2rad($fromDeg + 180);
         $dx = sin($b);
@@ -496,7 +495,7 @@ final class Canvas
         $head = $len * 0.68;
         $tip = [$cx + $dx * $len, $cy + $dy * $len];
         $base = [$cx + $dx * ($len - $head), $cy + $dy * ($len - $head)];
-        $this->stroke([[$cx - $dx * $len, $cy - $dy * $len], $base], $sw, INK);
+        $this->stroke([[$cx - $dx * $len, $cy - $dy * $len], $base], $strokeWidth, INK);
         $half = $head * 0.62;
         $this->polygon([
             $tip,
@@ -513,17 +512,17 @@ final class Canvas
         $file = sprintf('%s/moon/%02d.png', self::$iconDir, $frame);
         $picture = is_file($file) ? @imagecreatefrompng($file) : false;
         if ($picture !== false) {
-            $s = $this->s;
+            $scale = $this->scale;
             imagealphablending($this->im, true);
             imagecopyresampled(
                 $this->im,
                 $picture,
-                (int) round(($cx - $r) * $s),
-                (int) round(($cy - $r) * $s),
+                (int) round(($cx - $r) * $scale),
+                (int) round(($cy - $r) * $scale),
                 0,
                 0,
-                (int) round(2 * $r * $s),
-                (int) round(2 * $r * $s),
+                (int) round(2 * $r * $scale),
+                (int) round(2 * $r * $scale),
                 imagesx($picture),
                 imagesy($picture)
             );
@@ -570,7 +569,7 @@ final class Canvas
     public function png(): string
     {
         $out = imagecreatetruecolor($this->w, $this->h);
-        imagecopyresampled($out, $this->im, 0, 0, 0, 0, $this->w, $this->h, $this->w * $this->s, $this->h * $this->s);
+        imagecopyresampled($out, $this->im, 0, 0, 0, 0, $this->w, $this->h, $this->w * $this->scale, $this->h * $this->scale);
         $raw = '';
         for ($y = 0; $y < $this->h; $y++) {
             $row = "\0";

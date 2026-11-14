@@ -162,5 +162,5 @@ function write_sample_flights(array $config, bool $empty = false): void
         file_put_contents($config['cache_dir'] . '/route_lol_' . $call . '.json', '[]');
         file_put_contents($config['cache_dir'] . '/route_vrs_' . $call . '.json', '[]');
     }
-    @unlink($config['cache_dir'] . '/flight_state.json');
+    remove_file($config['cache_dir'] . '/flight_state.json');
 }

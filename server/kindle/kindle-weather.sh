@@ -251,7 +251,11 @@ load_view() {
         *) VIEW=$DEFAULT_VIEW ;;
     esac
     PAGE=0
-    [ "$VIEW" = hours ] && [ "$(cat "$DIR/page" 2>/dev/null)" = 1 ] && PAGE=1
+    if [ "$VIEW" = hours ]; then
+        case "$(cat "$DIR/page" 2>/dev/null)" in
+            [0-9]) PAGE=$(cat "$DIR/page") ;;
+        esac
+    fi
 }
 
 # True while the flight screen is open. The file "mode" holds when it was opened.
@@ -464,17 +468,30 @@ handle_tap() {
         # Upper half of the screen: refresh now, same design.
         kill -USR1 "$MAIN_PID"
     elif [ "$(cat "$DIR/view" 2>/dev/null)" = hours ]; then
-        # Lower half of the hour-by-hour tab: the other page, same as a swipe.
-        if [ "$(cat "$DIR/page" 2>/dev/null)" = 1 ]; then turn_page 0; else turn_page 1; fi
+        # Lower half of the hour-by-hour tab: the next page, and round to the first again.
+        turn_page cycle
     fi
 }
 
-# Shows page $1 (0 or 1) of the hour-by-hour tab.
+# The hour-by-hour tab has this many pages (8 hours each). Must match the server.
+HOUR_PAGES=3
+
+# Turns the page of the hour-by-hour tab: "next", "prev", or "cycle" (next,
+# and from the last page back to the first).
 turn_page() {
     [ "$(cat "$DIR/view" 2>/dev/null)" = hours ] || return
-    [ "$(cat "$DIR/page" 2>/dev/null)" = "$1" ] && return
-    [ "$1" = 0 ] && [ ! -f "$DIR/page" ] && return
-    echo "$1" > "$DIR/page"
+    current=$(cat "$DIR/page" 2>/dev/null)
+    case "$current" in
+        [0-9]) ;;
+        *) current=0 ;;
+    esac
+    case "$1" in
+        next)  new=$((current + 1)); [ "$new" -ge "$HOUR_PAGES" ] && return ;;
+        prev)  new=$((current - 1)); [ "$new" -lt 0 ] && return ;;
+        cycle) new=$(( (current + 1) % HOUR_PAGES )) ;;
+        *)     return ;;
+    esac
+    echo "$new" > "$DIR/page"
     kill -USR1 "$MAIN_PID"
 }
 
@@ -488,10 +505,10 @@ handle_touch() {
         handle_tap "$3" "$4"            # the flight screen has no swipes
     elif [ "$dy" -le "-$SWIPE_MIN" ] && [ "$dx" -lt "$(( -dy ))" ]; then
         log "swipe up"
-        turn_page 1
+        turn_page next
     elif [ "$dy" -ge "$SWIPE_MIN" ] && [ "$dx" -lt "$dy" ]; then
         log "swipe down"
-        turn_page 0
+        turn_page prev
     else
         handle_tap "$3" "$4"
     fi

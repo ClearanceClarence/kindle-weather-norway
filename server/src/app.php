@@ -33,11 +33,11 @@ function parse_request(array $query, string $default): array
         $view = $default;
     }
 
-    $batt = $int('batt');
+    $battery = $int('batt');
     $wake = (string) ($query['wake'] ?? '');
     return [
         'view'     => $view,
-        'batt'     => $batt === null ? null : max(0, min(100, $batt)),
+        'batt'     => $battery === null ? null : max(0, min(100, $battery)),
         'touch'    => ($query['x'] ?? '') === '1',
         'interval' => max(1, min(1440, $int('interval') ?? 10)),
         'wake'     => preg_match('/^\d{1,2}:\d{2}$/', $wake) ? $wake : '',
@@ -49,65 +49,65 @@ function parse_request(array $query, string $default): array
 /** Handles one request and returns the PNG to send back. */
 function render_request(array $config, array $query): string
 {
-    $req = parse_request($query, $config['default_view']);
+    $request = parse_request($query, $config['default_view']);
     active_tabs($config['tabs']);
     flight_button((bool) $config['flights']);
     Canvas::$iconSet = $config['icon_set'];
     Canvas::$iconDir = $config['icon_dir'];
     Canvas::$typeface = $config['fonts'][$config['font']] ?? null;
 
-    if ($req['view'] === 'closing') {
-        return render_closing($req, $config);
+    if ($request['view'] === 'closing') {
+        return render_closing($request, $config);
     }
-    if ($req['view'] === 'fonts') {
+    if ($request['view'] === 'fonts') {
         // The admin page asks for the sample in its own language, also before anything is saved.
         language(isset($_GET['lang']) && is_string($_GET['lang']) ? $_GET['lang'] : null);
-        return render_font_sample($req, $config);
+        return render_font_sample($request, $config);
     }
-    if ($req['view'] === 'icons') {
-        return render_icon_sample($req, $config);
+    if ($request['view'] === 'icons') {
+        return render_icon_sample($request, $config);
     }
     if ($config['lat'] === null || $config['lon'] === null) {
-        return render_setup($req, $config);
+        return render_setup($request, $config);
     }
 
     $forecast = load_forecast($config);
     if ($forecast === null) {
-        return render_error($req, $config);
+        return render_error($request, $config);
     }
 
     $model = build_model($forecast['data'], $forecast['fetched'], $config);
     // The offline screen is stored on the Kindle and shown later, so it gets
     // no alert. Only "Nå" shows the radar strip.
-    $model['alert'] = $req['view'] === 'offline' ? null : build_alert(load_alerts($config));
-    $model['nowcast'] = $req['view'] === 'now' ? build_nowcast(load_nowcast($config)) : null;
+    $model['alert'] = $request['view'] === 'offline' ? null : build_alert(load_alerts($config));
+    $model['nowcast'] = $request['view'] === 'now' ? build_nowcast(load_nowcast($config)) : null;
     // The aurora notice is shown on "Nå". It is fetched last: it matters least if it fails.
-    $model['aurora'] = ($req['view'] === 'now' && $config['aurora'])
+    $model['aurora'] = ($request['view'] === 'now' && $config['aurora'])
         ? build_aurora(load_kp_forecast($config), $model['byTime'], $config)
         : null;
     unset($model['byTime']);
 
-    return (SCREENS[$req['view']])($model, $req, $config);
+    return (SCREENS[$request['view']])($model, $request, $config);
 }
 
 /** Handles one request for the flight screen (flights.php) and returns the PNG. */
 function render_flight_request(array $config, array $query): string
 {
-    $req = parse_request($query, $config['default_view']);
+    $request = parse_request($query, $config['default_view']);
     Canvas::$iconSet = $config['icon_set'];
     Canvas::$iconDir = $config['icon_dir'];
     Canvas::$typeface = $config['fonts'][$config['font']] ?? null;
     if ($config['lat'] === null || $config['lon'] === null) {
-        return render_setup($req, $config);
+        return render_setup($request, $config);
     }
 
-    $tap = preg_match('/^(\d{1,4}),(\d{1,4})$/', (string) ($query['tap'] ?? ''), $m) ? [(int) $m[1], (int) $m[2]] : null;
+    $tap = preg_match('/^(\d{1,4}),(\d{1,4})$/', (string) ($query['tap'] ?? ''), $match) ? [(int) $match[1], (int) $match[2]] : null;
     $aircraft = load_aircraft($config);
     $state = flight_state($config);
     [$index, $tapped] = $aircraft ? select_aircraft($aircraft, $state, $tap, ($query['open'] ?? '') === '1') : [0, false];
     $route = $aircraft ? load_route($config, $aircraft[$index]) : null;
 
-    [$png, $drawn] = render_flights($aircraft, $index, $tapped, $route, $req, $config);
+    [$png, $drawn] = render_flights($aircraft, $index, $tapped, $route, $request, $config);
     flight_state($config, ['selected' => $tapped ? $aircraft[$index]['id'] : '', 'drawn' => $drawn]);
     return $png;
 }
@@ -127,7 +127,8 @@ function status_text(array $config): string
     if ($config['lat'] !== null) {
         $started = microtime(true);
         $png = render_request($config, ['view' => $config['default_view']]);
-        $lines[] = sprintf('Å tegne «%s» tok %.1f s (%d kB), medregnet eventuell kontakt med MET', $config['default_view'], microtime(true) - $started, strlen($png) / 1000);
+        $seconds = microtime(true) - $started;
+        $lines[] = sprintf('Å tegne «%s» tok %.1f s (%d kB), medregnet eventuell kontakt med MET', $config['default_view'], $seconds, strlen($png) / 1000);
         $started = microtime(true);
         render_request($config, ['view' => $config['default_view']]);
         $lines[] = sprintf('Å tegne den en gang til tok %.1f s', microtime(true) - $started);

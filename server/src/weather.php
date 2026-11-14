@@ -69,12 +69,14 @@ function parse_symbol(?string $code): array
     return ['icon' => $icon . ':' . $code, 'label' => $label, 'short' => t($short)];
 }
 
-function fmt_temp(float $t): string
+/** A temperature as whole degrees with a real minus sign: "−4°". */
+function fmt_temp(float $temperature): string
 {
-    $r = (int) round($t);
+    $r = (int) round($temperature);
     return ($r < 0 ? "\u{2212}" . abs($r) : (string) $r) . '°';
 }
 
+/** Precipitation with one decimal, or "0 mm" below 0.05 mm. */
 function fmt_mm(float $mm): string
 {
     return ($mm < 0.05 ? '0' : number_format($mm, 1, decimal_mark(), '')) . ' mm';
@@ -104,16 +106,16 @@ function moon_phase(int $now): array
     if ($age < 0) {
         $age += $synodic;
     }
-    $f = $age / $synodic;
+    $fraction = $age / $synodic;
     $name = match (true) {
-        $f < 0.03 || $f >= 0.97 => t('Nymåne'),
-        $f < 0.22 => t('Voksende sigd'),
-        $f < 0.28 => t('Første kvarter'),
-        $f < 0.47 => t('Voksende måne'),
-        $f < 0.53 => t('Fullmåne'),
-        $f < 0.72 => t('Minkende måne'),
-        $f < 0.78 => t('Siste kvarter'),
+        $fraction < 0.03 || $fraction >= 0.97 => t('Nymåne'),
+        $fraction < 0.22 => t('Voksende sigd'),
+        $fraction < 0.28 => t('Første kvarter'),
+        $fraction < 0.47 => t('Voksende måne'),
+        $fraction < 0.53 => t('Fullmåne'),
+        $fraction < 0.72 => t('Minkende måne'),
+        $fraction < 0.78 => t('Siste kvarter'),
         default   => t('Minkende sigd'),
     };
-    return ['fraction' => $f, 'name' => $name];
+    return ['fraction' => $fraction, 'name' => $name];
 }

@@ -100,7 +100,8 @@ return [
     'Nedbør' => 'Rain',
     'Vind (kast) m/s' => 'Wind (gusts) m/s',
     'Sveip opp for de neste timene' => 'Swipe up for the next hours',
-    'Sveip ned for de første timene' => 'Swipe down for the first hours',
+    'Sveip ned for de forrige timene' => 'Swipe down for the earlier hours',
+    'Sveip opp eller ned for flere timer' => 'Swipe up or down for more hours',
 
     // Night, offline, closing, errors, setup
     'God natt' => 'Good night',

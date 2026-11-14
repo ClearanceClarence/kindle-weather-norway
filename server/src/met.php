@@ -82,11 +82,11 @@ function cached_fetch(array $config, string $name, string $url, int $minRefetch,
         $status = 0;
         $parsed = [];
         foreach ($responseHeaders as $line) {
-            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) {
-                $status = (int) $m[1];
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $match)) {
+                $status = (int) $match[1];
             } elseif (strpos($line, ':') !== false) {
-                [$k, $v] = explode(':', $line, 2);
-                $parsed[strtolower(trim($k))] = trim($v);
+                [$key, $value] = explode(':', $line, 2);
+                $parsed[strtolower(trim($key))] = trim($value);
             }
         }
 
@@ -172,9 +172,9 @@ function load_kp_forecast(array $config): ?array
         if (!is_string($time) || !is_numeric($kp)) {
             continue;                    // the header row, or something unexpected
         }
-        $t = strtotime(str_replace('T', ' ', rtrim($time, 'Z')) . ' UTC');
-        if ($t !== false) {
-            $steps[$t] = (float) $kp;
+        $timestamp = strtotime(str_replace('T', ' ', rtrim($time, 'Z')) . ' UTC');
+        if ($timestamp !== false) {
+            $steps[$timestamp] = (float) $kp;
         }
     }
     ksort($steps);

@@ -162,8 +162,8 @@ function google_font_install(string $serverDir, string $family, array &$store, ?
         font_missing_chars($bold, FONT_REQUIRED_CHARS)
     ));
     if ($missing !== []) {
-        @unlink($medium);
-        @unlink($bold);
+        remove_file($medium);
+        remove_file($bold);
         $error = t('«') . $label . t('» mangler tegn som skjermen trenger: ') . implode(' ', $missing);
         return null;
     }
@@ -217,7 +217,7 @@ function google_font_remove(string $serverDir, string $key, array &$store): void
         return;
     }
     foreach (['Medium', 'Bold'] as $weight) {
-        @unlink(google_font_dir($serverDir) . '/' . basename((string) $font[$weight]));
+        remove_file(google_font_dir($serverDir) . '/' . basename((string) $font[$weight]));
     }
     unset($store['google_fonts'][$key]);
     if (($store['settings']['font'] ?? '') === $key) {

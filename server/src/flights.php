@@ -129,7 +129,7 @@ function quick_json(array $config, string $name, string $url, int $ttl, int $max
         $body = @file_get_contents($url, false, $context);
         if ($body !== false && is_array(json_decode($body, true))) {
             @file_put_contents($file, $body, LOCK_EX);
-            @unlink($file . '.err');
+            remove_file($file . '.err');
             $age = 0;
         } else {
             // Keep what went wrong, for the troubleshooting report.
@@ -140,7 +140,7 @@ function quick_json(array $config, string $name, string $url, int $ttl, int $max
     if ($age > $maxAge) {
         return null;
     }
-    $data = json_decode((string) @file_get_contents($file), true);
+    $data = json_decode(read_file($file), true);
     return is_array($data) ? $data : null;
 }
 
@@ -150,8 +150,8 @@ function distance_bearing(float $lat1, float $lon1, float $lat2, float $lon2): a
     $p1 = deg2rad($lat1);
     $p2 = deg2rad($lat2);
     $dl = deg2rad($lon2 - $lon1);
-    $a = sin(($p2 - $p1) / 2) ** 2 + cos($p1) * cos($p2) * sin($dl / 2) ** 2;
-    $km = 2 * 6371.0 * asin(min(1.0, sqrt($a)));
+    $haversine = sin(($p2 - $p1) / 2) ** 2 + cos($p1) * cos($p2) * sin($dl / 2) ** 2;
+    $km = 2 * 6371.0 * asin(min(1.0, sqrt($haversine)));
     $bearing = rad2deg(atan2(sin($dl) * cos($p2), cos($p1) * sin($p2) - sin($p1) * cos($p2) * cos($dl)));
     return [$km, fmod($bearing + 360, 360)];
 }
@@ -185,34 +185,36 @@ function load_aircraft(array $config): ?array
     }
 
     $aircraft = [];
-    foreach ($data['ac'] ?? $data['aircraft'] ?? [] as $a) {
-        if (!isset($a['lat'], $a['lon'], $a['hex']) || !is_numeric($a['alt_baro'] ?? $a['alt_geom'] ?? null)) {
+    foreach ($data['ac'] ?? $data['aircraft'] ?? [] as $raw) {
+        if (!isset($raw['lat'], $raw['lon'], $raw['hex']) || !is_numeric($raw['alt_baro'] ?? $raw['alt_geom'] ?? null)) {
             continue;                    // no position, or on the ground
         }
-        if ((float) ($a['seen_pos'] ?? $a['seen'] ?? 0) > 60) {
+        if ((float) ($raw['seen_pos'] ?? $raw['seen'] ?? 0) > 60) {
             continue;                    // not heard from for a minute
         }
-        [$km, $bearing] = distance_bearing($lat, $lon, (float) $a['lat'], (float) $a['lon']);
+        [$km, $bearing] = distance_bearing($lat, $lon, (float) $raw['lat'], (float) $raw['lon']);
         if ($km > $radius) {
             continue;
         }
-        $call = strtoupper(trim((string) ($a['flight'] ?? '')));
-        $reg = strtoupper(trim((string) ($a['r'] ?? '')));
-        $code = strtoupper(trim((string) ($a['t'] ?? '')));
-        $rate = (float) ($a['baro_rate'] ?? $a['geom_rate'] ?? 0);
+        $call = strtoupper(trim((string) ($raw['flight'] ?? '')));
+        $reg = strtoupper(trim((string) ($raw['r'] ?? '')));
+        $code = strtoupper(trim((string) ($raw['t'] ?? '')));
+        $rate = (float) ($raw['baro_rate'] ?? $raw['geom_rate'] ?? 0);
+        $speedKmh = (float) ($raw['gs'] ?? 0) * 1.852;                          // from knots
+        $altitudeMeters = (float) ($raw['alt_baro'] ?? $raw['alt_geom']) * 0.3048;   // from feet
         $aircraft[] = [
-            'id'      => preg_replace('/[^0-9a-f]/', '', strtolower((string) $a['hex'])),
-            'call'    => $call !== '' ? $call : ($reg !== '' ? $reg : strtoupper((string) $a['hex'])),
+            'id'      => preg_replace('/[^0-9a-f]/', '', strtolower((string) $raw['hex'])),
+            'call'    => $call !== '' ? $call : ($reg !== '' ? $reg : strtoupper((string) $raw['hex'])),
             'reg'     => $reg,
-            'type'    => AIRCRAFT_TYPES[$code] ?? (trim((string) ($a['desc'] ?? '')) ?: $code),
-            'airline' => preg_match('/^([A-Z]{3})\d/', $call, $m) ? (AIRLINES[$m[1]] ?? '') : '',
-            'shape'   => aircraft_shape($code, (string) ($a['category'] ?? ''), (float) ($a['gs'] ?? 0) * 1.852, (float) ($a['alt_baro'] ?? $a['alt_geom']) * 0.3048),
-            'alt'     => (int) round((float) ($a['alt_baro'] ?? $a['alt_geom']) * 0.3048 / 50) * 50,
-            'speed'   => (int) round((float) ($a['gs'] ?? 0) * 1.852 / 10) * 10,
-            'track'   => (float) ($a['track'] ?? $a['true_heading'] ?? 0),
+            'type'    => AIRCRAFT_TYPES[$code] ?? (trim((string) ($raw['desc'] ?? '')) ?: $code),
+            'airline' => preg_match('/^([A-Z]{3})\d/', $call, $match) ? (AIRLINES[$match[1]] ?? '') : '',
+            'shape'   => aircraft_shape($code, (string) ($raw['category'] ?? ''), $speedKmh, $altitudeMeters),
+            'alt'     => (int) round($altitudeMeters / 50) * 50,
+            'speed'   => (int) round($speedKmh / 10) * 10,
+            'track'   => (float) ($raw['track'] ?? $raw['true_heading'] ?? 0),
             'trend'   => $rate > 300 ? 'up' : ($rate < -300 ? 'down' : 'level'),
-            'lat'     => (float) $a['lat'],
-            'lon'     => (float) $a['lon'],
+            'lat'     => (float) $raw['lat'],
+            'lon'     => (float) $raw['lon'],
             'km'      => $km,
             'bearing' => $bearing,
         ];
@@ -249,13 +251,13 @@ function load_route(array $config, array $aircraft): ?array
 }
 
 /** One airport as the screen needs it, from the differently named fields of the two sources. Null if incomplete. */
-function route_airport(array $a): ?array
+function route_airport(array $source): ?array
 {
     $airport = [
-        'city' => (string) ($a['municipality'] ?? $a['location'] ?? $a['name'] ?? ''),
-        'code' => (string) ($a['iata_code'] ?? $a['iata'] ?? $a['icao_code'] ?? $a['icao'] ?? ''),
-        'lat'  => $a['latitude'] ?? $a['lat'] ?? null,
-        'lon'  => $a['longitude'] ?? $a['lon'] ?? null,
+        'city' => (string) ($source['municipality'] ?? $source['location'] ?? $source['name'] ?? ''),
+        'code' => (string) ($source['iata_code'] ?? $source['iata'] ?? $source['icao_code'] ?? $source['icao'] ?? ''),
+        'lat'  => $source['latitude'] ?? $source['lat'] ?? null,
+        'lon'  => $source['longitude'] ?? $source['lon'] ?? null,
     ];
     if ($airport['city'] === '' || !is_numeric($airport['lat']) || !is_numeric($airport['lon'])) {
         return null;
@@ -298,7 +300,7 @@ function adsblol_routes(?array $data): array
             continue;
         }
         $airports = array_values(array_filter(array_map(
-            fn($a) => is_array($a) ? route_airport($a) : null,
+            fn($source) => is_array($source) ? route_airport($source) : null,
             $entry['_airports']
         )));
         $airline = AIRLINES[strtoupper((string) ($entry['airline_code'] ?? ''))] ?? '';
@@ -333,18 +335,18 @@ function routes_from_adsbdb(array $config, string $call): array
  */
 function airline_name(array $config, array $aircraft, ?array $route): string
 {
-    if (!preg_match('/^([A-Z]{3})\d/', $aircraft['call'], $m)) {
+    if (!preg_match('/^([A-Z]{3})\d/', $aircraft['call'], $match)) {
         return '';
     }
-    if (isset(AIRLINES[$m[1]])) {
-        return AIRLINES[$m[1]];
+    if (isset(AIRLINES[$match[1]])) {
+        return AIRLINES[$match[1]];
     }
     if (($route['airline'] ?? '') !== '') {
         return $route['airline'];
     }
     static $names = null;
-    $names ??= json_decode((string) @file_get_contents(dirname($config['icon_dir']) . '/map/airlines.json'), true)['airlines'] ?? [];
-    return (string) ($names[$m[1]] ?? '');
+    $names ??= json_decode(read_file(dirname($config['icon_dir']) . '/map/airlines.json'), true)['airlines'] ?? [];
+    return (string) ($names[$match[1]] ?? '');
 }
 
 /**
@@ -408,7 +410,7 @@ function flight_state(array $config, ?array $save = null): array
         @file_put_contents($file, json_encode($save), LOCK_EX);
         return $save;
     }
-    $state = json_decode((string) @file_get_contents($file), true);
+    $state = json_decode(read_file($file), true);
     return is_array($state) ? $state + ['selected' => '', 'drawn' => []] : ['selected' => '', 'drawn' => []];
 }
 
@@ -423,15 +425,15 @@ function select_aircraft(array $aircraft, array $state, ?array $tap, bool $reset
     if ($tap !== null) {
         $best = 90.0;                    // a tap counts within this many pixels of an aircraft
         foreach ($state['drawn'] as $id => [$x, $y]) {
-            $d = hypot($x - $tap[0], $y - $tap[1]);
-            if ($d < $best) {
-                $best = $d;
+            $distance = hypot($x - $tap[0], $y - $tap[1]);
+            if ($distance < $best) {
+                $best = $distance;
                 $selected = (string) $id;
             }
         }
     }
-    foreach ($aircraft as $i => $a) {
-        if ($a['id'] === $selected) {
+    foreach ($aircraft as $i => $plane) {
+        if ($plane['id'] === $selected) {
             return [$i, true];
         }
     }
@@ -452,14 +454,14 @@ function flight_debug_text(array $config): string
     $lines = [count($aircraft) . t(' fly innen ') . $config['flight_radius'] . ' km'];
     $map = basemap_file($config, (int) $config['flight_radius'], 1120);
     $lines[] = 'Kart: ' . ($map === null ? 'ingen' : (str_ends_with($map, '_kartverket.png') ? 'silhuett fra Kartverket' : 'grov kystlinje (reserve)'));
-    foreach ($aircraft as $a) {
+    foreach ($aircraft as $plane) {
         $lines[] = '';
-        $lines[] = sprintf('%s  %s  %d km unna, kurs %d°, %d m', $a['call'], $a['type'], round($a['km']), round($a['track']), $a['alt']);
-        if (!preg_match('/^[A-Z]{3}\d[A-Z0-9]{0,4}$/', $a['call'])) {
+        $lines[] = sprintf('%s  %s  %d km unna, kurs %d°, %d m', $plane['call'], $plane['type'], round($plane['km']), round($plane['track']), $plane['alt']);
+        if (!preg_match('/^[A-Z]{3}\d[A-Z0-9]{0,4}$/', $plane['call'])) {
             $lines[] = '  ikke et rutefly-kallesignal, ingen rute slås opp';
             continue;
         }
-        $sources = ['adsb.lol' => routes_from_adsblol($config, $a), 'adsbdb' => routes_from_adsbdb($config, $a['call'])];
+        $sources = ['adsb.lol' => routes_from_adsblol($config, $plane), 'adsbdb' => routes_from_adsbdb($config, $plane['call'])];
         foreach ($sources as $name => $routes) {
             if ($routes === []) {
                 $lines[] = "  $name: ingen rute";
@@ -472,15 +474,15 @@ function flight_debug_text(array $config): string
                     $r['from']['code'],
                     $r['to']['city'],
                     $r['to']['code'],
-                    route_is_plausible($r, $a) ? 'godtatt' : 'forkastet, passer ikke med posisjon og kurs'
+                    route_is_plausible($r, $plane) ? 'godtatt' : 'forkastet, passer ikke med posisjon og kurs'
                 );
             }
         }
         // The raw answers from adsb.lol's two addresses, since their formats are not documented.
         foreach (['route_vrs_' => 'adsb.lol'] as $prefix => $label) {
-            $file = $config['cache_dir'] . '/' . $prefix . strtolower($a['call']) . '.json';
-            $raw = @file_get_contents($file);
-            $error = @file_get_contents($file . '.err');
+            $file = $config['cache_dir'] . '/' . $prefix . strtolower($plane['call']) . '.json';
+            $raw = is_file($file) ? file_get_contents($file) : false;
+            $error = is_file($file . '.err') ? file_get_contents($file . '.err') : false;
             if ($raw === false && $error === false) {
                 continue;                // not asked
             }

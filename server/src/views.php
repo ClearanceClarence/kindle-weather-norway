@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  * To add a tab:
  *   1. Write the screen in src/views/<name>.php as a function
- *        render_<name>(array $m, array $req, array $config): string
+ *        render_<name>(array $model, array $request, array $config): string
  *      that returns PNG bytes. Copy an existing view to start from.
  *   2. Add it to TAB_LABELS and SCREENS below.
  *   3. Switch it on under "Faner" on the admin page (or in 'tabs' in

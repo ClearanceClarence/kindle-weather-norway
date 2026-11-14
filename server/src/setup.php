@@ -62,8 +62,8 @@ function site_url(): ?string
  */
 function kindle_script(string $serverDir, string $url): ?string
 {
-    $script = @file_get_contents($serverDir . '/kindle/kindle-weather.sh');
-    if ($script === false) {
+    $script = read_file($serverDir . '/kindle/kindle-weather.sh');
+    if ($script === '') {
         return null;
     }
     $script = preg_replace('/^SERVER_URL=.*$/m', 'SERVER_URL="' . $url . '"', $script, 1, $count);

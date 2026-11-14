@@ -47,14 +47,14 @@ declare(strict_types=1);
 function flatten_timeseries(array $forecast): array
 {
     $series = [];
-    foreach ($forecast['properties']['timeseries'] as $e) {
-        $d = $e['data'] ?? [];
-        $inst = $d['instant']['details'] ?? [];
+    foreach ($forecast['properties']['timeseries'] as $entry) {
+        $data = $entry['data'] ?? [];
+        $inst = $data['instant']['details'] ?? [];
         if (!isset($inst['air_temperature'])) {
             continue;
         }
         $series[] = [
-            't'     => (int) strtotime($e['time']),
+            't'     => (int) strtotime($entry['time']),
             'temp'  => (float) $inst['air_temperature'],
             'wind'  => (float) ($inst['wind_speed'] ?? 0),
             'dir'   => (float) ($inst['wind_from_direction'] ?? 0),
@@ -62,15 +62,15 @@ function flatten_timeseries(array $forecast): array
             'uv'    => $inst['ultraviolet_index_clear_sky'] ?? null,
             'cloud' => $inst['cloud_area_fraction'] ?? null,
             // The next hour (only present for the first two days or so).
-            'sym1'  => $d['next_1_hours']['summary']['symbol_code'] ?? null,
-            'p1'    => $d['next_1_hours']['details']['precipitation_amount'] ?? null,
-            'pop1'  => $d['next_1_hours']['details']['probability_of_precipitation'] ?? null,
+            'sym1'  => $data['next_1_hours']['summary']['symbol_code'] ?? null,
+            'p1'    => $data['next_1_hours']['details']['precipitation_amount'] ?? null,
+            'pop1'  => $data['next_1_hours']['details']['probability_of_precipitation'] ?? null,
             // The next six hours.
-            'sym6'  => $d['next_6_hours']['summary']['symbol_code'] ?? null,
-            'p6'    => $d['next_6_hours']['details']['precipitation_amount'] ?? null,
-            'max6'  => $d['next_6_hours']['details']['air_temperature_max'] ?? null,
-            'min6'  => $d['next_6_hours']['details']['air_temperature_min'] ?? null,
-            'sym12' => $d['next_12_hours']['summary']['symbol_code'] ?? null,
+            'sym6'  => $data['next_6_hours']['summary']['symbol_code'] ?? null,
+            'p6'    => $data['next_6_hours']['details']['precipitation_amount'] ?? null,
+            'max6'  => $data['next_6_hours']['details']['air_temperature_max'] ?? null,
+            'min6'  => $data['next_6_hours']['details']['air_temperature_min'] ?? null,
+            'sym12' => $data['next_12_hours']['summary']['symbol_code'] ?? null,
         ];
     }
     usort($series, fn($a, $b) => $a['t'] <=> $b['t']);
@@ -84,15 +84,15 @@ function summarize_rest_of_today(array $series, int $currentIndex, int $now): ar
     $hi = $lo = $series[$currentIndex]['temp'];
     $rain = 0.0;
     $uvMax = null;
-    foreach ($series as $i => $e) {
-        if ($i < $currentIndex || date('Y-m-d', $e['t']) !== $today) {
+    foreach ($series as $i => $entry) {
+        if ($i < $currentIndex || date('Y-m-d', $entry['t']) !== $today) {
             continue;
         }
-        $hi = max($hi, $e['temp']);
-        $lo = min($lo, $e['temp']);
-        $rain += (float) ($e['p1'] ?? 0);
-        if ($e['uv'] !== null) {
-            $uvMax = max($uvMax ?? 0, (float) $e['uv']);
+        $hi = max($hi, $entry['temp']);
+        $lo = min($lo, $entry['temp']);
+        $rain += (float) ($entry['p1'] ?? 0);
+        if ($entry['uv'] !== null) {
+            $uvMax = max($uvMax ?? 0, (float) $entry['uv']);
         }
     }
     return ['hi' => $hi, 'lo' => $lo, 'rain' => $rain, 'uvMax' => $uvMax];
@@ -102,25 +102,25 @@ function summarize_rest_of_today(array $series, int $currentIndex, int $now): ar
 function hour_rows(array $byTime, array $current): array
 {
     $rows = [];
-    for ($k = 1; $k <= 24; $k++) {
-        $t = $current['t'] + $k * 3600;
+    for ($step = 1; $step <= 24; $step++) {
+        $time = $current['t'] + $step * 3600;
         // Hourly data runs out after about two days; stop at the first gap.
-        if (!isset($byTime[$t]) || ($byTime[$t]['sym1'] ?? null) === null) {
+        if (!isset($byTime[$time]) || ($byTime[$time]['sym1'] ?? null) === null) {
             break;
         }
-        $e = $byTime[$t];
+        $entry = $byTime[$time];
         $rows[] = [
-            'hour'  => date('H', $t),
-            'day'   => t(WEEKDAYS_SHORT[(int) date('w', $t)]),
-            'sym'   => parse_symbol($e['sym1']),
-            'temp'  => fmt_temp($e['temp']),
-            'feels' => fmt_temp(feels_like($e['temp'], $e['wind'])),
-            'mm'    => fmt_mm((float) ($e['p1'] ?? 0)),
-            'mmRaw' => (float) ($e['p1'] ?? 0),
-            'pop'   => $e['pop1'] === null ? '' : (int) (round((float) $e['pop1'] / 5) * 5) . ' %',
-            'wind'  => (int) round($e['wind']),
-            'gust'  => $e['gust'] === null ? null : (int) round((float) $e['gust']),
-            'dir'   => $e['dir'],
+            'hour'  => date('H', $time),
+            'day'   => t(WEEKDAYS_SHORT[(int) date('w', $time)]),
+            'sym'   => parse_symbol($entry['sym1']),
+            'temp'  => fmt_temp($entry['temp']),
+            'feels' => fmt_temp(feels_like($entry['temp'], $entry['wind'])),
+            'mm'    => fmt_mm((float) ($entry['p1'] ?? 0)),
+            'mmRaw' => (float) ($entry['p1'] ?? 0),
+            'pop'   => $entry['pop1'] === null ? '' : (int) (round((float) $entry['pop1'] / 5) * 5) . ' %',
+            'wind'  => (int) round($entry['wind']),
+            'gust'  => $entry['gust'] === null ? null : (int) round((float) $entry['gust']),
+            'dir'   => $entry['dir'],
         ];
     }
     return $rows;
@@ -130,29 +130,29 @@ function hour_rows(array $byTime, array $current): array
 function next_hours(array $byTime, array $current): array
 {
     $steps = [];
-    $t = $current['t'] + 3600;
-    while ((int) date('G', $t) % 3 !== 0) {
-        $t += 3600;
+    $time = $current['t'] + 3600;
+    while ((int) date('G', $time) % 3 !== 0) {
+        $time += 3600;
     }
-    for ($k = 0; $k < 6; $k++, $t += 3 * 3600) {
-        if (!isset($byTime[$t])) {
+    for ($step = 0; $step < 6; $step++, $time += 3 * 3600) {
+        if (!isset($byTime[$time])) {
             break;
         }
-        $e = $byTime[$t];
+        $entry = $byTime[$time];
         // Amount and highest chance of precipitation over the three hours.
         $mm = 0.0;
         $pop = null;
-        for ($h = 0; $h < 3; $h++) {
-            $mm += (float) ($byTime[$t + $h * 3600]['p1'] ?? 0);
-            $p = $byTime[$t + $h * 3600]['pop1'] ?? null;
-            if ($p !== null) {
-                $pop = max($pop ?? 0, (float) $p);
+        for ($hourOffset = 0; $hourOffset < 3; $hourOffset++) {
+            $mm += (float) ($byTime[$time + $hourOffset * 3600]['p1'] ?? 0);
+            $chance = $byTime[$time + $hourOffset * 3600]['pop1'] ?? null;
+            if ($chance !== null) {
+                $pop = max($pop ?? 0, (float) $chance);
             }
         }
         $steps[] = [
-            'hour' => date('H', $t),
-            'sym'  => parse_symbol($e['sym1'] ?? $e['sym6']),
-            'temp' => fmt_temp($e['temp']),
+            'hour' => date('H', $time),
+            'sym'  => parse_symbol($entry['sym1'] ?? $entry['sym6']),
+            'temp' => fmt_temp($entry['temp']),
             'mm'   => fmt_mm($mm),
             'pop'  => $pop === null ? '' : (int) (round($pop / 5) * 5) . ' %',
         ];
@@ -164,23 +164,23 @@ function next_hours(array $byTime, array $current): array
 function graph_points(array $byTime, array $current): array
 {
     $points = [];
-    for ($k = 0; $k <= 24; $k++) {
-        $t = $current['t'] + $k * 3600;
-        if (!isset($byTime[$t])) {
+    for ($step = 0; $step <= 24; $step++) {
+        $time = $current['t'] + $step * 3600;
+        if (!isset($byTime[$time])) {
             break;
         }
-        $e = $byTime[$t];
+        $entry = $byTime[$time];
         $points[] = [
-            't'     => $t,
-            'hour'  => date('H', $t),
-            'temp'  => $e['temp'],
-            'feels' => feels_like($e['temp'], $e['wind']),
-            'mm'    => (float) ($e['p1'] ?? 0),
-            'pop'   => $e['pop1'],
-            'icon'  => parse_symbol($e['sym1'] ?? $e['sym6'])['icon'],
-            'wind'  => $e['wind'],
-            'dir'   => $e['dir'],
-            'gust'  => $e['gust'],
+            't'     => $time,
+            'hour'  => date('H', $time),
+            'temp'  => $entry['temp'],
+            'feels' => feels_like($entry['temp'], $entry['wind']),
+            'mm'    => (float) ($entry['p1'] ?? 0),
+            'pop'   => $entry['pop1'],
+            'icon'  => parse_symbol($entry['sym1'] ?? $entry['sym6'])['icon'],
+            'wind'  => $entry['wind'],
+            'dir'   => $entry['dir'],
+            'gust'  => $entry['gust'],
         ];
     }
     return $points;
@@ -198,22 +198,22 @@ function summarize_day(array $series, int $now, int $offset): ?array
     $symbol = null;
     $symbolDistance = 99;
     $mm = 0.0;
-    foreach ($series as $e) {
-        if (date('Y-m-d', $e['t']) !== $date) {
+    foreach ($series as $entry) {
+        if (date('Y-m-d', $entry['t']) !== $date) {
             continue;
         }
-        foreach ([$e['temp'], $e['max6'], $e['min6']] as $v) {
-            if ($v === null) {
+        foreach ([$entry['temp'], $entry['max6'], $entry['min6']] as $value) {
+            if ($value === null) {
                 continue;
             }
-            $max = $max === null ? $v : max($max, $v);
-            $min = $min === null ? $v : min($min, $v);
+            $max = $max === null ? $value : max($max, $value);
+            $min = $min === null ? $value : min($min, $value);
         }
         // Hourly entries carry 1-hour amounts; later entries only 6-hour amounts.
-        $mm += (float) ($e['p1'] ?? $e['p6'] ?? 0);
+        $mm += (float) ($entry['p1'] ?? $entry['p6'] ?? 0);
         // The day's symbol is the one closest to noon.
-        $sym = $e['sym6'] ?? $e['sym1'] ?? $e['sym12'];
-        $distance = abs((int) date('G', $e['t']) - 12);
+        $sym = $entry['sym6'] ?? $entry['sym1'] ?? $entry['sym12'];
+        $distance = abs((int) date('G', $entry['t']) - 12);
         if ($sym !== null && $distance < $symbolDistance) {
             $symbol = $sym;
             $symbolDistance = $distance;
@@ -261,8 +261,8 @@ function build_model(array $forecast, int $fetched, array $config): array
 
     // Current conditions: the latest entry that is not in the future.
     $currentIndex = 0;
-    foreach ($series as $i => $e) {
-        if ($e['t'] <= $now) {
+    foreach ($series as $i => $entry) {
+        if ($entry['t'] <= $now) {
             $currentIndex = $i;
         }
     }
@@ -337,14 +337,14 @@ function build_nowcast(?array $nowcast): ?array
     $now = time();
     $rates = [];
     $times = [];
-    foreach ($nowcast['properties']['timeseries'] ?? [] as $e) {
-        $t = (int) strtotime((string) ($e['time'] ?? ''));
-        $rate = $e['data']['instant']['details']['precipitation_rate'] ?? null;
-        if ($rate === null || $t < $now - 300 || count($rates) >= 18) {
+    foreach ($nowcast['properties']['timeseries'] ?? [] as $entry) {
+        $time = (int) strtotime((string) ($entry['time'] ?? ''));
+        $rate = $entry['data']['instant']['details']['precipitation_rate'] ?? null;
+        if ($rate === null || $time < $now - 300 || count($rates) >= 18) {
             continue;
         }
         $rates[] = (float) $rate;
-        $times[] = $t;
+        $times[] = $time;
     }
     if (count($rates) < 6) {
         return null;
@@ -371,16 +371,16 @@ function build_nowcast(?array $nowcast): ?array
     return ['rates' => $rates, 'text' => $text];
 }
 
-/** True when the sky is dark enough for aurora at $t: the sun at least 12 degrees down. */
-function is_dark(int $t, array $config): bool
+/** True when the sky is dark enough for aurora at $time: the sun at least 12 degrees down. */
+function is_dark(int $time, array $config): bool
 {
-    $sun = date_sun_info($t, $config['lat'], $config['lon']);
+    $sun = date_sun_info($time, $config['lat'], $config['lon']);
     $dawn = $sun['nautical_twilight_begin'];
     $dusk = $sun['nautical_twilight_end'];
     if (!is_int($dawn) || !is_int($dusk)) {
         return $dawn === false;          // false = the sun stays that far down all day
     }
-    return $t < $dawn || $t > $dusk;
+    return $time < $dawn || $time > $dusk;
 }
 
 /**
@@ -398,15 +398,15 @@ function build_aurora(?array $kpSteps, array $byTime, array $config): ?array
     $now = time();
     $first = (int) (floor($now / 3600) * 3600);
     $run = [];
-    for ($t = $first; $t < $first + 24 * 3600; $t += 3600) {
+    for ($timestamp = $first; $timestamp < $first + 24 * 3600; $timestamp += 3600) {
         $kp = null;
         foreach ($kpSteps as $start => $value) {
-            if ($start <= $t && $t < $start + 3 * 3600) {
+            if ($start <= $timestamp && $timestamp < $start + 3 * 3600) {
                 $kp = $value;
             }
         }
-        if ($kp !== null && $kp >= $config['aurora_kp'] && is_dark($t, $config)) {
-            $run[] = ['t' => $t, 'kp' => $kp, 'cloud' => $byTime[$t]['cloud'] ?? null];
+        if ($kp !== null && $kp >= $config['aurora_kp'] && is_dark($timestamp, $config)) {
+            $run[] = ['t' => $timestamp, 'kp' => $kp, 'cloud' => $byTime[$timestamp]['cloud'] ?? null];
         } elseif ($run !== []) {
             break;
         }
@@ -443,18 +443,18 @@ function build_alert(?array $alerts): ?array
 {
     $now = time();
     $best = null;
-    foreach ($alerts['features'] ?? [] as $f) {
-        $p = $f['properties'] ?? [];
-        $color = strtolower((string) ($p['riskMatrixColor'] ?? ''));
-        if ($color === '' && preg_match('/(yellow|orange|red)/i', (string) ($p['awareness_level'] ?? ''), $m)) {
-            $color = strtolower($m[1]);
+    foreach ($alerts['features'] ?? [] as $feature) {
+        $properties = $feature['properties'] ?? [];
+        $color = strtolower((string) ($properties['riskMatrixColor'] ?? ''));
+        if ($color === '' && preg_match('/(yellow|orange|red)/i', (string) ($properties['awareness_level'] ?? ''), $match)) {
+            $color = strtolower($match[1]);
         }
         $level = ['yellow' => 1, 'orange' => 2, 'red' => 3][$color] ?? 0;
-        $name = trim((string) ($p['eventAwarenessName'] ?? $p['event'] ?? ''));
+        $name = trim((string) ($properties['eventAwarenessName'] ?? $properties['event'] ?? ''));
         if ($level === 0 || $name === '') {
             continue;
         }
-        $interval = $f['when']['interval'] ?? $p['when']['interval'] ?? [];
+        $interval = $feature['when']['interval'] ?? $properties['when']['interval'] ?? [];
         $start = isset($interval[0]) ? (int) strtotime((string) $interval[0]) : 0;
         $end = isset($interval[1]) ? (int) strtotime((string) $interval[1]) : 0;
         if ($end > 0 && $end < $now) {
