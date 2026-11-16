@@ -78,6 +78,22 @@ final class Canvas
         imagefilledellipse($this->im, (int) round($cx * $scale), (int) round($cy * $scale), $d, $d, $this->color($gray));
     }
 
+    /** A filled bar with fully rounded ends; a circle when it is as wide as it is high. */
+    public function pill(float $x, float $y, float $width, float $height, int $gray): void
+    {
+        $radius = $height / 2;
+        $this->disc($x + $radius, $y + $radius, $radius, $gray);
+        $this->disc($x + $width - $radius, $y + $radius, $radius, $gray);
+        $this->rect($x + $radius, $y, $width - $height, $height, $gray);
+    }
+
+    /** The outline of a pill, $strokeWidth thick, with $fill inside. */
+    public function pillOutline(float $x, float $y, float $width, float $height, float $strokeWidth, int $gray, int $fill = PAPER): void
+    {
+        $this->pill($x, $y, $width, $height, $gray);
+        $this->pill($x + $strokeWidth, $y + $strokeWidth, $width - 2 * $strokeWidth, $height - 2 * $strokeWidth, $fill);
+    }
+
     /** Draws a round-capped stroke through the given points by stamping discs. */
     public function stroke(array $pts, float $strokeWidth, int $gray): void
     {

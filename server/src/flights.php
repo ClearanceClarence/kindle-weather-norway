@@ -59,7 +59,7 @@ const AIRCRAFT_SHAPES = [
 ];
 
 // How large each silhouette is drawn on the map, as half its length in pixels.
-const AIRCRAFT_SIZES = ['jet4' => 31, 'jet2' => 26, 'tailjet' => 22, 'prop4' => 28, 'prop2' => 24, 'small' => 19, 'fighter' => 21, 'heli' => 24];
+const AIRCRAFT_SIZES = ['jet4' => 26, 'jet2' => 22, 'tailjet' => 19, 'prop4' => 24, 'prop2' => 20, 'small' => 16, 'fighter' => 18, 'heli' => 20];
 
 /**
  * Which silhouette suits an aircraft: from its type code when it is a known
@@ -228,13 +228,14 @@ function load_aircraft(array $config): ?array
  * lat, lon), or null when unknown. Only airline flights have routes.
  *
  * Two open route databases are asked, and the first answer that can be
- * true for where the aircraft is now wins (see route_is_plausible):
+ * true for where the aircraft is now wins (see fit_route):
  *
  *   1. adsb.lol's route list, one file per call sign
  *   2. adsbdb.com, by call sign alone
  *
  * Airlines reuse call signs, so either can be out of date; an answer that
- * does not fit the aircraft is dropped rather than shown.
+ * does not fit the aircraft is dropped rather than shown, and one that only
+ * fits the other way round is turned around.
  */
 function load_route(array $config, array $aircraft): ?array
 {
@@ -243,8 +244,9 @@ function load_route(array $config, array $aircraft): ?array
         return null;
     }
     foreach (array_merge(routes_from_adsblol($config, $aircraft), routes_from_adsbdb($config, $call)) as $route) {
-        if (route_is_plausible($route, $aircraft)) {
-            return $route;
+        $fitted = fit_route($route, $aircraft);
+        if ($fitted !== null) {
+            return $fitted;
         }
     }
     return null;
@@ -389,12 +391,88 @@ function route_is_plausible(array $route, array $aircraft): bool
     }
     // Near either airport an aircraft turns every which way; in between it should point at its destination.
     if ($flown > 60 && $left > 100) {
-        $off = abs(fmod($aircraft['track'] - $toward + 540, 360) - 180);
-        if ($off > 100) {
+        if (angle_between($aircraft['track'], $toward) > 100) {
             return false;
         }
     }
     return true;
+}
+
+/** The angle between two compass bearings, 0 to 180 degrees. */
+function angle_between(float $bearing, float $other): float
+{
+    return abs(fmod($bearing - $other + 540, 360) - 180);
+}
+
+/**
+ * Whether the aircraft is flying a route the other way than the database
+ * says. The same call sign is often listed for only one of the two legs,
+ * so an aircraft taking off from the "destination" is really on its way to
+ * the "origin".
+ *
+ * Near an airport, heading alone says little (aircraft circle to line up),
+ * so the test there is climbing away from the destination, or descending
+ * toward the origin.
+ */
+function route_is_backwards(array $route, array $aircraft): bool
+{
+    [$fromOrigin, $towardOrigin] = distance_bearing($aircraft['lat'], $aircraft['lon'], $route['from']['lat'], $route['from']['lon']);
+    [$toDestination, $towardDestination] = distance_bearing($aircraft['lat'], $aircraft['lon'], $route['to']['lat'], $route['to']['lon']);
+    $offDestination = angle_between($aircraft['track'], $towardDestination);
+    $offOrigin = angle_between($aircraft['track'], $towardOrigin);
+
+    if ($toDestination <= 100 && $toDestination <= $fromOrigin) {
+        return $aircraft['trend'] === 'up' && $offDestination > 90;
+    }
+    if ($fromOrigin <= 60) {
+        return $aircraft['trend'] === 'down' && $offOrigin < 90;
+    }
+    return $offDestination > 100 && $offOrigin < 80;
+}
+
+/**
+ * The route as it fits the aircraft: as given, turned around when the
+ * aircraft is flying it the other way, or null when it fits neither way.
+ * A turned route has 'reversed' => true.
+ */
+function fit_route(array $route, array $aircraft): ?array
+{
+    $reversed = ['from' => $route['to'], 'to' => $route['from'], 'reversed' => true] + $route;
+    if (route_is_backwards($route, $aircraft) && route_is_plausible($reversed, $aircraft)) {
+        return $reversed;
+    }
+    if (route_is_plausible($route, $aircraft)) {
+        return $route;
+    }
+    return route_is_plausible($reversed, $aircraft) ? $reversed : null;
+}
+
+const TRACK_POINTS = 120;            // positions kept per aircraft
+const TRACK_KEEP_SECONDS = 1800;     // forget an aircraft this long after it was last seen
+
+/**
+ * Adds where each aircraft is now to the positions seen earlier, and returns
+ * them all: id => [[lat, lon], ...], oldest first. The flight services only
+ * tell where an aircraft is, not where it has been, so the trail on the map
+ * is what this server has seen itself.
+ */
+function record_tracks(array $config, array $aircraft): array
+{
+    $file = $config['cache_dir'] . '/flight_tracks.json';
+    $tracks = json_decode(read_file($file), true);
+    $tracks = is_array($tracks) ? $tracks : [];
+    $now = time();
+    foreach ($aircraft as $plane) {
+        $points = $tracks[$plane['id']]['points'] ?? [];
+        $position = [round($plane['lat'], 4), round($plane['lon'], 4)];
+        if ($points === [] || $points[count($points) - 1] !== $position) {
+            $points[] = $position;
+        }
+        $tracks[$plane['id']] = ['seen' => $now, 'points' => array_slice($points, -TRACK_POINTS)];
+    }
+    $tracks = array_filter($tracks, fn(array $track) => $now - $track['seen'] <= TRACK_KEEP_SECONDS);
+    @file_put_contents($file, json_encode($tracks), LOCK_EX);
+    return array_map(fn(array $track) => $track['points'], $tracks);
 }
 
 /**
@@ -467,6 +545,12 @@ function flight_debug_text(array $config): string
                 $lines[] = "  $name: ingen rute";
             }
             foreach ($routes as $r) {
+                $fitted = fit_route($r, $plane);
+                $verdict = match (true) {
+                    $fitted === null              => 'forkastet, passer ikke med posisjon og kurs',
+                    isset($fitted['reversed'])    => 'godtatt, men snudd: flyet går motsatt vei',
+                    default                       => 'godtatt',
+                };
                 $lines[] = sprintf(
                     '  %s: %s (%s) -> %s (%s): %s',
                     $name,
@@ -474,7 +558,7 @@ function flight_debug_text(array $config): string
                     $r['from']['code'],
                     $r['to']['city'],
                     $r['to']['code'],
-                    route_is_plausible($r, $plane) ? 'godtatt' : 'forkastet, passer ikke med posisjon og kurs'
+                    $verdict
                 );
             }
         }

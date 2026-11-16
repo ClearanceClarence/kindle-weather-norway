@@ -18,8 +18,8 @@ function render_graph(array $model, array $request, array $config): string
     $canvas->rect(LEFT, 366, CONTENT, 3, INK);
     $canvas->text(t('Neste 24 timer'), LEFT, 414, 38, 'Bold');
     $total = array_sum(array_column($model['graph'], 'mm'));
-    $canvas->text(t('Stiplet: føles som · Nedbør ') . fmt_mm($total), RIGHT, 414, 26, 'Medium', GRAY, 'right');
-    draw_chart($canvas, $model['graph'], 452);
+    $canvas->text(t('Nedbør ') . fmt_mm($total), RIGHT, 414, 26, 'Medium', GRAY, 'right');
+    draw_chart($canvas, $model['graph'], 452, $model['graphSun']);
 
     draw_footer($canvas, $model['updated'], $request['touch'], 'graph', $model['stale']);
     return $canvas->png();

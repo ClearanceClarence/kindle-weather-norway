@@ -29,10 +29,10 @@ Skjermene og innstillingssiden er på norsk. Koden og kommentarene er på engels
 - Været nå med vindretning og vindkast, soloppgang og solnedgang, et bilde av månen i riktig fase, og UV-indeks.
 - En radarstripe som viser om det kommer nedbør de neste 90 minuttene.
 - Farevarsler fra Meteorologisk institutt, som banner og varseltrekant.
-- Et meteogram for 24 timer med temperatur, «føles som», nedbør og vind.
+- Et meteogram for 24 timer med temperatur, «føles som», nedbør og vind. Natten er skyggelagt, og soloppgang og solnedgang er merket.
 - Varsel når det kan bli nordlys: et banner på Nå når NOAA venter nok geomagnetisk aktivitet (Kp) i de mørke timene det neste døgnet, med en merknad hvis varselet sier skyet.
-- «Fly over oss»: en flyknapp åpner et kart med flyene i nærheten. Trykk på et fly for å se flyselskapet, ruten, omtrent hvor lenge det har fløyet og har igjen, høyde, fart og flytype. Ulike fly har ulike tegninger: to motorer, fire motorer, propellfly, småfly, jagerfly og helikopter.
-- Stilletid med nattskjerm, oppdateringer uten blink, og frontlyset av for å spare batteri.
+- «Fly over oss»: en flyknapp åpner et kart med flyene i nærheten. Trykk på et fly for å se flyselskapet, ruten, omtrent hvor lenge det har fløyet og har igjen, høyde, fart og flytype. Kartet viser også hvor flyet har fløyet og hvor det er på vei hvis det holder kursen. Ulike fly har ulike tegninger: to motorer, fire motorer, propellfly, småfly, jagerfly og helikopter.
+- Stilletid med nattskjerm, oppdateringer uten blink, og frontlyset av for å spare batteri. Står Kindle til lading, kan lyset være på hele dagen.
 - En passordbeskyttet innstillingsside for sted, skrift, ikoner, faner, oppdateringstider og frontlys. Kindle henter endringene selv.
 - Seks innebygde skrifter, alle skrifter fra Google Fonts ved behov, og fem ikonsett.
 - Beskjed når batteriet er lavt eller varselet er gammelt. Mister Kindle forbindelsen, viser den det sist kjente varselet og timene framover, og prøver igjen av seg selv.
@@ -110,6 +110,8 @@ Ingenting annet fra prosjektet skal til Kindle. `tools/`, `docs/` og README hør
 
 ### Når du oppdaterer til en ny versjon
 
+Versjonene heter `v` og utgivelsesdatoen, for eksempel `v20261116`. Kommer det to på samme dag, får den andre `.2` bak. Serveren har nummeret til siste utgivelse (`APP_VERSION` i `server/src/bootstrap.php`). Kindle-skriptet har nummeret til den utgivelsen det sist ble endret i (`SCRIPT_VERSION`), så du trenger bare å bytte filen på Kindle når innstillingssiden sier at versjonene er ulike.
+
 1. Lukk værskjermen på Kindle med krysset.
 2. Last opp hele mappen `server` på nytt. Innstillingene dine ligger i `data/` og blir ikke overskrevet.
 3. Last ned `kindle-weather.sh` fra innstillingssiden på nytt og kopier den til `documents`, hvis skriptet er endret. Er du usikker, gjør det uansett.
@@ -142,6 +144,7 @@ Det stegene over ordner for deg, hvis du heller vil bruke filer:
 
 - **Bytt skjerm:** trykk på en fane nederst. Kindle husker valget.
 - **Oppdater nå:** trykk på øvre halvdel av skjermen.
+- **Rundgang:** slår du på «Bytt til neste fane ved hver oppdatering» på innstillingssiden, viser skjermen fanene etter tur, én for hver oppdatering, og flyskjermen også hvis du velger det. Et trykk på en fane virker som før, og runden fortsetter derfra.
 - **Bla i timene:** fanen Timer har tre sider med åtte timer på hver. Sveip opp for de neste timene og ned for de forrige. Et trykk på nedre halvdel går til neste side, og fra den siste tilbake til den første. En vanlig oppdatering går tilbake til første side.
 - **Se på fly:** trykk på flyet nederst til høyre for å åpne «Fly over oss». Trykk på et fly på kartet for å se mer om det. Skjermen oppdateres hvert minutt og går tilbake til været av seg selv etter et kvarter. «Tilbake til været» nederst lukker den med en gang.
 - **Lukk:** trykk på det svake krysset øverst til høyre. Kindle viser en avskjedsskjerm mens dens eget grensesnitt starter igjen, noe som tar omtrent et halvt minutt.
@@ -156,11 +159,11 @@ Slutter skjermen å svare, holder du inne av/på-knappen i omtrent 40 sekunder t
 - stedsnavn og koordinater
 - kontaktadressen som sendes til Meteorologisk institutt
 - skrift og ikonsett (se under)
-- hvilke faner som vises, og hvilken som kommer først
+- hvilke faner som vises, hvilken som kommer først, og om skjermen skal gå gjennom dem av seg selv
 - hvor ofte skjermen oppdateres, stilletid, og hvor ofte skjermen blinker helt
-- flyskjermen: av eller på, og hvor langt den ser
+- flyskjermen: av eller på, hvor langt den ser, og om huset i midten og flyplassene skal vises
 - nordlysvarselet: av eller på, og Kp-grensen som utløser det
-- frontlysets styrke og tider
+- frontlysets styrke og tider, og en egen styrke når Kindle står til lading
 
 Kindle spør serveren om innstillingene ved hver vanlige oppdatering, så endringer vises innen ett intervall uten at du rører Kindle.
 
@@ -208,10 +211,13 @@ Bildesettene ligger som PNG-filer i `server/icons/`. `tools/build-icons.py` bygg
 | `SERVER_URL` | | Adressen til serveren. Allerede fylt inn i filen du laster ned fra innstillingssiden |
 | `INTERVAL_MIN` * | `10` | Minutter mellom oppdateringene |
 | `QUIET_START`, `QUIET_END` * | `0`, `6` | Stilletid (24-timers klokke). Skjermen viser en nattskjerm og slutter å oppdatere. Sett begge til samme tall for å slå det av |
-| `FULL_REFRESH_EVERY` * | `6` | Hver n-te oppdatering blinker skjermen for å fjerne skygger. De andre oppdaterer stille |
+| `FULL_REFRESH_EVERY` * | `6` | Hver n-te gang skjermen tegnes (ved trykk eller vanlig oppdatering) blinker den for å fjerne skygger. De andre gangene oppdateres den stille |
+| `ROTATE` * | `0` | `1` viser neste fane ved hver vanlige oppdatering, i stedet for den samme |
+| `ROTATE_FLIGHTS` * | `0` | `1` lar flyskjermen få en tur i runden, etter den siste fanen. Krever at flyknappen er på |
 | `LIGHT_CONTROL` | `1` | La skriptet styre frontlyset. `0` lar det være i fred |
 | `LIGHT_LEVEL` * | `0` | `0` holder frontlyset av hele døgnet, som sparer mest batteri. `1`–`24` slår det på med den styrken om kvelden |
 | `LIGHT_FROM`, `LIGHT_TO` * | `16`, `24` | Timene lyset er på, når `LIGHT_LEVEL` er over 0 |
+| `LIGHT_CHARGING` * | `10` | Lysstyrken mens Kindle står til lading. Da er lyset på hele dagen, unntatt i stilletiden. `0` gir ingen forskjell |
 | `STOP_GUI` | `1` | Stopp Kindles grensesnitt mens værskjermen kjører. `0` lar det kjøre, for testing |
 | `TOUCH_CONTROLS` | `1` | Faner, trykk for å oppdatere, sveip og lukkeknappen |
 | `FLIGHTS` * | `1` | Vis flyknappen |
@@ -243,7 +249,7 @@ server/                     bildeserveren (last opp denne mappen)
   config.example.php        mal for den valgfrie config.php (ikke i git)
   fonts/                    skriftene, med lisensene sine
   icons/                    ikonsettene med lisenser, og månebildene
-  map/                      for flyskjermen: flyplasser, flyselskaper, og en grov kystlinje som reserve for Kartverkets kart
+  map/                      for flyskjermen: flyplasser, flyselskaper, og grove kystlinjer (Norden og verden) som reserve for kartet
   src/
     bootstrap.php           laster koden og innstillingene
     i18n.php                språk: oversetter tekstene, datoer og tall
@@ -251,7 +257,7 @@ server/                     bildeserveren (last opp denne mappen)
     settings.php            innstillinger: standardverdier, kontroll, lagring
     fonts.php               skriftlisten og nedlasting fra Google Fonts
     flights.php             flydata: fly i nærheten, ruter, hvilket fly som er valgt
-    flightmap.php           kartet under flyene: Kartverket, med kystlinje som reserve
+    flightmap.php           kartet under flyene: Kartverket i Norge, OpenStreetMap ellers, kystlinje som reserve
     setup.php               sjekk av webhotellet og Kindle-filen med adressen fylt inn
     app.php                 gangen i en forespørsel: les spørringen, hent data, velg skjerm
     met.php                 henter fra Meteorologisk institutt og NOAA, med mellomlager
@@ -338,7 +344,9 @@ Kindle avgjør hva et trykk betyr ut fra faste områder på skjermen: hjørnet m
 
 `server/flights.php` er en egen inngang som tegner «Fly over oss». Den henter flyene innen rekkevidde fra et åpent ADS-B-nettverk (adsb.lol, med adsb.fi som reserve), slår opp ruten til det valgte flyet, og legger alt oppå et kart.
 
-- **Kartet:** en silhuett av land og vann, uten veier og navn. I Norge lages den én gang per sted av Kartverkets topografiske kart: alt kartet farger blått (sjø, innsjøer, brede elver) blir hvitt, resten lysegrått, og bildet lagres i `cache`. Grensen for hva som regnes som blått er `WATER_BLUENESS` i `src/flightmap.php`. Utenfor Norge, eller når Kartverket ikke svarer, tegnes en grov kystlinje fra Natural Earth (`server/map/coast.json`).
+- **Kartet:** en silhuett av land og vann, uten veier og navn. Den lages én gang per sted av et vanlig kart: alt kartet farger blått (sjø, innsjøer, brede elver) blir hvitt, resten lysegrått, og bildet lagres i `cache`. I Norge brukes Kartverkets topografiske kart. Utenfor Norge, og der Kartverkets kart har hull fordi stedet ligger ved grensen, brukes OpenStreetMap. Får serveren ikke tak i noen av dem, tegner den en grov kystlinje fra Natural Earth (`map/coast.json` for Norden, `map/coast-world.json` for resten av verden) og prøver igjen etter seks timer. Grensen for hva som regnes som blått er `WATER_BLUENESS` i `src/flightmap.php`. En annen kartkilde kan settes som `map_tiles` i `config.php`, med `%1$d` for zoom, `%2$d` for kolonne og `%3$d` for rad.
+- **Retningen:** rutedatabasene har ofte bare én av de to retningene for et kallesignal. Et fly som stiger bort fra «målet», synker mot «avgangsstedet» eller flyr motsatt vei midt på ruten, vises derfor med ruten snudd. Flyrapporten (`flights.php?debug=1`) sier fra når en rute er snudd.
+- **Flybanen:** den stiplede pilen viser hvor det valgte flyet havner hvis det holder kursen. Den grå linjen med prikker viser hvor det har fløyet. Flytjenestene oppgir bare hvor et fly er nå, så sporet er de posisjonene serveren selv har sett (`flight_tracks.json` i mellomlageret). Det begynner derfor når flyet først dukker opp på kartet ditt, og vokser for hver oppdatering.
 - **Flyselskapet:** navnet kommer fra rutedatabasen når den oppgir det, ellers fra de tre første bokstavene i kallesignalet, slått opp i en kort liste i `src/flights.php` og deretter i `server/map/airlines.json`.
 - **Tidene:** «dro for ca. … siden» og «lander om ca. …» er anslag. Ingen åpne kilder oppgir virkelige avgangs- og ankomsttider, så de regnes ut fra avstanden flyet har lagt bak seg og har igjen, med vanlig marsjfart for flytypen (`flight_times()`).
 - **Ruten:** to åpne rutedatabaser spørres, først adsb.lol, så adsbdb.com. Flyselskapene bruker kallesignaler om igjen, så svarene kan være utdaterte. Derfor vises en rute bare når den kan stemme med hvor flyet er og hvilken vei det flyr (`route_is_plausible()`). Ellers står det «Ruten er ikke kjent».
@@ -355,6 +363,8 @@ Skriptet på Kindle fører logg i `kindle-weather/log.txt`, som du ser over USB.
 | Dette ser du | Sannsynlig årsak |
 | --- | --- |
 | «Ingen kontakt med serveren» ved første start | Skjermen viser adressen den prøvde. Er det `https://example.com/weather/`, kommer filen fra zip-filen: last den ned fra innstillingssiden i stedet. Er adressen riktig, er Wi-Fi av eller serveren nede |
+| Skjermen viser «Ingen forbindelse» om morgenen | Kindle kan miste Wi-Fi i løpet av natten. Skriptet ber den koble til igjen, og slår Wi-Fi av og på hvis det ikke hjelper. Se etter linjer med `wifi:` i loggen |
+| Usikker på hvilken versjon som kjører | Innstillingssiden viser serverens versjon og hvilken versjon Kindle kjører, og sier fra når de er ulike. «Ukjent» betyr at Kindle ikke har meldt fra ennå, eller kjører en fil fra før versjonsnumrene. Loggen på Kindle sier også `started (version …)` ved hver start. Lukk skjermen med krysset og start på nytt etter at du har byttet filen |
 | Skjermen blinker og går tilbake til biblioteket | Værskjermen ble stoppet av et trykk til på «Værvarsel» mens den startet. Trykk én gang og vent, opptil et halvt minutt |
 | «Finner ikke filen kindle/kindle-weather.sh på serveren» på innstillingssiden | Mappen `kindle` mangler på webhotellet. Last opp hele mappen `server` |
 | «Værvarsel» står to ganger i biblioteket | En gammel fil ligger igjen i `documents`. Slett den du ikke bruker |
@@ -366,8 +376,8 @@ Skriptet på Kindle fører logg i `kindle-weather/log.txt`, som du ser over USB.
 | Sertifikatfeil fra curl i loggen | Kindle stoler ikke på HTTPS-sertifikatet til serveren. Bruk `http://` hvis webhotellet tilbyr det |
 | Skygger bygger seg opp | Senk «Full oppfrisking» på innstillingssiden |
 | «Får ikke kontakt med flytjenesten» | Serveren når ikke adsb.lol eller adsb.fi. Skjermen prøver igjen hvert minutt |
-| Flykartet har land der det skal være vann, eller omvendt | Silhuetten lages ut fra fargene i Kartverkets kart. Juster `WATER_BLUENESS` i `src/flightmap.php` og slett filene som begynner med `map_` i `cache` |
-| Flykartet viser bare en grov kystlinje | Serveren fikk ikke hentet Kartverkets kart. Den prøver igjen etter seks timer |
+| Flykartet har land der det skal være vann, eller omvendt | Silhuetten lages ut fra fargene i kartet. Juster `WATER_BLUENESS` i `src/flightmap.php` og slett filene som begynner med `map_` i `cache` |
+| Flykartet viser bare en grov kystlinje | Serveren fikk ikke hentet kartet fra Kartverket eller OpenStreetMap. Den prøver igjen etter seks timer. Utenfor Norden er reservekystlinjen svært grov |
 | Glemt passordet | Slett `data/store.php` på serveren og sett det opp på nytt |
 
 ## Kjente begrensninger
@@ -377,7 +387,7 @@ Skriptet på Kindle fører logg i `kindle-weather/log.txt`, som du ser over USB.
 - Testet på én enhet, en Paperwhite 4. Skjermstørrelse, berøring, sveip og frontlys kan oppføre seg annerledes på andre modeller.
 - En skrift fra Google Fonts får en automatisk størrelsesfaktor. Uvanlig brede eller høye skrifter kan likevel kollidere et sted. Se på forhåndsvisningen etter at du har lagt til en.
 - Nordlysvarselet er en grov pekepinn. Kp er ett tall for hele kloden, varslet i steg på tre timer. Standardgrensen 5 passer for Sør-Norge, og nordlyset kan likevel utebli, eller dukke opp en natt uten varsel. Lesingen av NOAAs data er skrevet etter dokumentasjonen og ikke prøvd mot den ekte tjenesten ennå.
-- Flyskjermen viser bare fly som frivillige mottakere i nærheten fanger opp, så lavtflygende småfly og helikoptre kan mangle. Ruten finnes ikke for alle fly, og ruter som ikke kan stemme med hvor flyet er og hvilken vei det flyr, vises ikke. Tidene på flyskjermen er anslag og kan bomme med ti minutter eller mer. Silhuetten av land og vann er ikke prøvd mot Kartverkets ekte kart ennå.
+- Flyskjermen viser bare fly som frivillige mottakere i nærheten fanger opp, så lavtflygende småfly og helikoptre kan mangle. Ruten finnes ikke for alle fly, og ruter som ikke kan stemme med hvor flyet er og hvilken vei det flyr, vises ikke. Tidene på flyskjermen er anslag og kan bomme med ti minutter eller mer. Silhuetten utenfor Norge lages av OpenStreetMap og er ikke prøvd mot det ekte kartet ennå.
 - Mappene `cache` og `data` er stengt for besøkende med `.htaccess`-filer, som bare Apache-lignende servere følger. På nginx må de to mappene stenges i serveroppsettet.
 - Innstillingssiden har ett passord og ingen brukerkontoer. Bruk HTTPS.
 - Lesingen av radar- og farevarseldata fra Meteorologisk institutt er skrevet etter dokumentasjonen og lite brukt i praksis så langt. Det samme gjelder stedssøket mot Kartverket.
@@ -387,7 +397,7 @@ Skriptet på Kindle fører logg i `kindle-weather/log.txt`, som du ser over USB.
 - Stedet og kontaktadressen din lagres bare på din egen server.
 - Kontaktadressen sendes bare til Meteorologisk institutt.
 - Stedssøket går fra nettleseren din rett til Kartverket.
-- Flyskjermen sender koordinatene dine (avrundet til fire desimaler) til adsb.lol eller adsb.fi for å spørre etter fly i nærheten, kallesignalet til det valgte flyet til adsb.lol og adsbdb.com, og ber Kartverket om kartet rundt stedet ditt. Kontaktadressen sendes ikke til noen av dem. Slår du av flyknappen, og ingen åpner `flights.php`, skjer ingenting av dette.
+- Flyskjermen sender koordinatene dine (avrundet til fire desimaler) til adsb.lol eller adsb.fi for å spørre etter fly i nærheten, kallesignalet til det valgte flyet til adsb.lol og adsbdb.com, og ber Kartverket (i Norge) eller OpenStreetMap (ellers) om kartet rundt stedet ditt, én gang per sted. Kontaktadressen sendes ikke til noen av dem. Slår du av flyknappen, og ingen åpner `flights.php`, skjer ingenting av dette.
 - Kindle snakker bare med din egen server.
 
 ## Takk til
@@ -395,7 +405,7 @@ Skriptet på Kindle fører logg i `kindle-weather/log.txt`, som du ser over USB.
 - Værdata fra [Meteorologisk institutt](https://api.met.no/), lisensiert under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Skjermen krediterer dem på hver skjerm, slik vilkårene ber om.
 - Stedssøk: [Kartverkets](https://www.kartverket.no/api-og-data) åpne adresse- og stedsnavnregistre.
 - Flydata: [adsb.lol](https://adsb.lol/) og [adsb.fi](https://adsb.fi/), drevet av frivillige med egne mottakere. Ruter fra adsb.lol og [adsbdb.com](https://www.adsbdb.com/).
-- Flykart: silhuetten lages av det topografiske kartet fra [Kartverket](https://www.kartverket.no/api-og-data) (CC BY 4.0), med kystlinje fra [Natural Earth](https://www.naturalearthdata.com/) (fritt å bruke) som reserve.
+- Flykart: silhuetten lages av det topografiske kartet fra [Kartverket](https://www.kartverket.no/api-og-data) (CC BY 4.0) i Norge og av kartet fra [OpenStreetMap](https://www.openstreetmap.org/copyright) (© OpenStreetMap-bidragsyterne, ODbL) ellers, med kystlinje fra [Natural Earth](https://www.naturalearthdata.com/) (fritt å bruke) som reserve.
 - Flyplasser: [OurAirports](https://ourairports.com/) (fritt å bruke).
 - Flyselskaper: [OpenFlights](https://openflights.org/data) sin flyselskapsdatabase. Filen `server/map/airlines.json` er et utdrag av den og har samme lisens, Open Database License (ODbL), ikke MIT som resten av prosjektet.
 - Nordlysvarsel: Kp-varsel fra [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/). Kontaktadressen sendes ikke til NOAA.

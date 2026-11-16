@@ -31,6 +31,7 @@ try {
     if (($_GET['view'] ?? '') === 'settings') {
         header('Content-Type: text/plain; charset=utf-8');
         header('Cache-Control: no-store');
+        kindle_version($config, is_string($_GET['ver'] ?? null) ? $_GET['ver'] : null);
         echo device_settings_text($config);
         exit;
     }

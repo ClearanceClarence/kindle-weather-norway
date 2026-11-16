@@ -10,8 +10,9 @@ declare(strict_types=1);
  * Meteogram for the next 24 hours. From the top: weather icons, temperature
  * and "feels like" every third hour, the temperature curve over a labelled
  * grid, chance and amount of precipitation, hourly precipitation bars, and wind.
+ * $sun (from graph_sun()) shades the hours when the sun is down.
  */
-function draw_chart(Canvas $canvas, array $points, float $y0): void
+function draw_chart(Canvas $canvas, array $points, float $y0, array $sun = []): void
 {
     $count = count($points);
     if ($count < 4) {
@@ -86,8 +87,30 @@ function draw_chart(Canvas $canvas, array $points, float $y0): void
     };
     $curve = $spline($temps);
 
-    // Light fill under the curve, then the grid on top of it.
+    // Night: the stretches between sunset and sunrise, as [left, right] in pixels.
+    $xAtTime = fn(int $time) => $x0 + ($time - $points[0]['t']) / 3600 * $step;
+    $nights = [];
+    $dark = $sun['dark'] ?? false;
+    $from = $x0;
+    foreach ($sun['events'] ?? [] as $event) {
+        if ($dark) {
+            $nights[] = [$from, $xAtTime($event['t'])];
+        }
+        $dark = !$event['up'];
+        $from = $xAtTime($event['t']);
+    }
+    if ($dark) {
+        $nights[] = [$from, $x1];
+    }
+
+    // Light fill under the curve, darker at night, then the grid on top of it.
+    foreach ($nights as [$left, $right]) {
+        $canvas->rect($left, $top, $right - $left, $bottom - $top, 242);
+    }
     $canvas->polygon(array_merge($curve, [[$x1, $bottom], [$x0, $bottom]]), 232);
+    foreach ($nights as [$left, $right]) {
+        $canvas->polygon(array_merge(curve_between($curve, $left, $right), [[$right, $bottom], [$left, $bottom]]), 208);
+    }
     for ($temperature = $axisLo; $temperature <= $axisHi + 0.01; $temperature += $grid) {
         $zero = abs($temperature) < 0.01;
         $canvas->rect($x0, $yAt($temperature) - 1, $x1 - $x0, $zero ? 3 : 2, $zero ? GRAY : 190);
@@ -102,6 +125,29 @@ function draw_chart(Canvas $canvas, array $points, float $y0): void
             }
             $canvas->text(t(WEEKDAYS_SHORT[(int) date('w', $point['t'])]), $xAt($i) + 10, $bottom - 18, 26, 'Medium', GRAY);
         }
+    }
+
+    // Sunrise and sunset: a thin line, with the time just above the plot.
+    // $lines collects every vertical line, so the curve names can avoid them.
+    $lines = [];
+    foreach ($points as $i => $point) {
+        if ($i > 0 && $point['hour'] === '00') {
+            $lines[] = $xAt($i);
+        }
+    }
+    $labelEnd = $x0 - 20;
+    foreach ($sun['events'] ?? [] as $event) {
+        $x = $xAtTime($event['t']);
+        $lines[] = $x;
+        $canvas->rect($x - 1, $top, 2, $bottom - $top, GRAY);
+        $label = t($event['up'] ? 'sol opp ' : 'sol ned ') . date('H:i', $event['t']);
+        $width = $canvas->textWidth($label, 20, 'Medium');
+        $left = max($x0, min($x1 - $width, $x - $width / 2));
+        if ($left < $labelEnd + 16) {
+            continue;                      // too close to the previous one, as in a very short day
+        }
+        $canvas->text($label, $left, $top - 15, 20, 'Medium', GRAY);
+        $labelEnd = $left + $width;
     }
 
     // "Feels like" as a dashed line, under the temperature curve.
@@ -123,6 +169,28 @@ function draw_chart(Canvas $canvas, array $points, float $y0): void
     foreach (array_unique([$iMax, $iMin]) as $i) {
         $canvas->disc($xAt($i), $yAt($points[$i]['temp']), 13, INK);
         $canvas->disc($xAt($i), $yAt($points[$i]['temp']), 7.5, PAPER);
+    }
+
+    // Name the two curves on the curves themselves, at the first hour where
+    // both names have room and are clear of the marked highest and lowest hour.
+    if ($showFeels) {
+        for ($i = 3; $i < $count - 3; $i++) {
+            $above = min(array_map($yAt, array_slice($temps, $i - 2, 5))) - 24;
+            $below = max(array_map($yAt, array_slice($feels, $i - 2, 5))) + 24;
+            $clearOfLines = array_filter($lines, fn(float $x) => abs($x - $xAt($i)) < 80) === [];
+            if ($clearOfLines && abs($i - $iMax) >= 3 && abs($i - $iMin) >= 3 && $above > $top + 16 && $below < $bottom - 44) {
+                $canvas->text(t('temperatur'), $xAt($i), $above, 22, 'Bold', INK, 'center');
+                $canvas->text(t('føles som'), $xAt($i), $below, 22, 'Medium', GRAY, 'center');
+                break;
+            }
+        }
+    }
+    foreach ([[$iMax, t('høyest'), -34], [$iMin, t('lavest'), 34]] as [$i, $label, $offset]) {
+        $y = $yAt($temps[$i]) + $offset;
+        if ($y < $top + 40 || $y > $bottom - 40) {
+            $y = $yAt($temps[$i]) - $offset;
+        }
+        $canvas->text($label, max($x0 + 40, min($x1 - 40, $xAt($i))), $y, 20, 'Medium', GRAY, 'center');
     }
 
     // Rows under the curve: chance of precipitation and amount for the three hours.
@@ -172,4 +240,26 @@ function draw_chart(Canvas $canvas, array $points, float $y0): void
             $canvas->text($gust, $tx + $canvas->textWidth($speed, 30, 'Bold'), $base + 146, 24, 'Medium', GRAY);
         }
     }
+}
+
+/**
+ * The part of a curve (points [x, y] from left to right) between two x
+ * positions, with the ends placed exactly on them.
+ */
+function curve_between(array $curve, float $left, float $right): array
+{
+    $yAtX = function (float $x) use ($curve): float {
+        foreach ($curve as $i => [$px, $py]) {
+            if ($px >= $x) {
+                if ($i === 0) {
+                    return $py;
+                }
+                [$qx, $qy] = $curve[$i - 1];
+                return $qy + ($py - $qy) * ($x - $qx) / max(0.001, $px - $qx);
+            }
+        }
+        return $curve[count($curve) - 1][1];
+    };
+    $inside = array_values(array_filter($curve, fn(array $point) => $point[0] > $left && $point[0] < $right));
+    return array_merge([[$left, $yAtX($left)]], $inside, [[$right, $yAtX($right)]]);
 }

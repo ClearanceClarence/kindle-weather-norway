@@ -5,19 +5,25 @@ declare(strict_types=1);
 /*
  * The map under the flight screen.
  *
- * In Norway it is a silhouette of land and water, worked out once per
- * location from Kartverket's topographic map and kept. Elsewhere, or when Kartverket
- * cannot be reached, a coarse coastline from Natural Earth (map/coast.json)
- * is drawn instead.
+ * It is a silhouette of land and water, worked out once per location from
+ * an ordinary map and kept: Kartverket's topographic map in Norway, and
+ * OpenStreetMap everywhere else. When neither can be reached, a coarse
+ * coastline from Natural Earth (map/coast.json, map/coast-world.json) is
+ * drawn instead.
  *
- * Both use the same projection (web mercator), so aircraft land in the same
+ * All use the same projection (web mercator), so aircraft land in the same
  * place whichever map is underneath.
  */
 
-// Kartverket's topographic map in color, as tiles: zoom, row, column.
-// Another tile server with the same layout can be set as 'map_tiles' in
+// Map tiles to make the silhouette from: %1$d is the zoom level, %2$d the
+// column and %3$d the row. Another tile server can be set as 'map_tiles' in
 // config.php, as long as its water is blue.
-const KARTVERKET_TILES = 'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/%d/%d/%d.png';
+const KARTVERKET_TILES = 'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/%1$d/%3$d/%2$d.png';
+const OSM_TILES = 'https://tile.openstreetmap.org/%1$d/%2$d/%3$d.png';
+
+// Kartverket's tiles are empty outside Norway. When more than this share of
+// the map has no data, OpenStreetMap is used instead.
+const MAP_MISSING_LIMIT = 0.03;
 
 // A map pixel counts as water when its blue exceeds its red by at least this much.
 const WATER_BLUENESS = 18;
@@ -48,21 +54,42 @@ function basemap_file(array $config, int $radius, int $size): ?string
     // "v3" in the name: earlier versions kept the whole street map, so
     // their pictures are made again.
     $base = sprintf('%s/map_v3_%.4F_%.4F_%d_%d', $config['cache_dir'], $config['lat'], $config['lon'], $radius, $size);
-    if (is_file($base . '_kartverket.png')) {
-        return $base . '_kartverket.png';
+    foreach (['kartverket', 'osm', 'custom'] as $source) {
+        if (is_file($base . '_' . $source . '.png')) {
+            return $base . '_' . $source . '.png';
+        }
     }
 
-    // Kartverket covers Norway. After a failure, wait six hours before trying again.
     $inNorway = $config['lat'] > 57.5 && $config['lat'] < 71.6 && $config['lon'] > 4.0 && $config['lon'] < 31.6;
-    $failed = $base . '_kartverket.failed';
-    if ($inNorway && (!is_file($failed) || time() - filemtime($failed) > 6 * 3600)) {
-        $map = kartverket_map($config, $radius, $size);
-        if ($map !== null) {
-            round_off($map, $size);
-            imagepng($map, $base . '_kartverket.png');
-            return $base . '_kartverket.png';
+    $sources = $inNorway ? ['kartverket' => KARTVERKET_TILES, 'osm' => OSM_TILES] : ['osm' => OSM_TILES];
+    if (isset($config['map_tiles'])) {
+        $sources = ['custom' => (string) $config['map_tiles']];
+    }
+
+    $incomplete = null;                 // a Kartverket map with holes, kept in case nothing better turns up
+    foreach ($sources as $source => $pattern) {
+        // After a failure, wait six hours before asking that map service again.
+        $failed = $base . '_' . $source . '.failed';
+        if (is_file($failed) && time() - filemtime($failed) <= 6 * 3600) {
+            continue;
         }
-        @touch($failed);
+        $made = tile_map($config, $radius, $size, $pattern);
+        if ($made === null) {
+            @touch($failed);
+            continue;
+        }
+        if ($source === 'kartverket' && $made['missing'] > MAP_MISSING_LIMIT && count($sources) > 1) {
+            $incomplete = $made['map'];
+            continue;
+        }
+        round_off($made['map'], $size);
+        imagepng($made['map'], $base . '_' . $source . '.png');
+        return $base . '_' . $source . '.png';
+    }
+    if ($incomplete !== null) {
+        round_off($incomplete, $size);
+        imagepng($incomplete, $base . '_kartverket.png');
+        return $base . '_kartverket.png';
     }
 
     if (!is_file($base . '_coast.png')) {
@@ -77,13 +104,16 @@ function basemap_file(array $config, int $radius, int $size): ?string
 }
 
 /**
- * A silhouette of land and water for the square around home, made from
- * Kartverket's topographic map: everything the map colors blue (sea, lakes,
- * wide rivers) becomes white, everything else light gray, with a darker
- * line along the shore. Roads, names and contour lines disappear. Null if
- * any tile is missing.
+ * A silhouette of land and water for the square around home, made from a
+ * map's tiles: everything the map colors blue (sea, lakes, wide rivers)
+ * becomes white, everything else light gray, with a darker line along the
+ * shore. Roads, names and contour lines disappear.
+ *
+ * @return array{map: \GdImage, missing: float}|null the picture and the share
+ *         of it the tiles had no data for (drawn as water); null if a tile
+ *         could not be fetched
  */
-function kartverket_map(array $config, int $radius, int $size): ?\GdImage
+function tile_map(array $config, int $radius, int $size, string $pattern): ?array
 {
     // The zoom level whose tiles are at least as detailed as the picture needs.
     $kmAcrossWorld = 40075.017 * cos(deg2rad((float) $config['lat']));
@@ -105,15 +135,14 @@ function kartverket_map(array $config, int $radius, int $size): ?\GdImage
         return null;
     }
 
-    // Water-colored underneath: outside Norway's waters the tiles are
-    // transparent, and that is open sea.
+    // Magenta underneath: where a tile is transparent (Kartverket outside
+    // Norway's waters) it shows through, and is counted as "no data".
     $sheet = imagecreatetruecolor(($lastX - $firstX + 1) * 256, ($lastY - $firstY + 1) * 256);
-    imagefilledrectangle($sheet, 0, 0, imagesx($sheet), imagesy($sheet), 0xBEE0F5);
-    $pattern = $config['map_tiles'] ?? KARTVERKET_TILES;
-    $context = stream_context_create(['http' => ['timeout' => 6, 'header' => "User-Agent: kindle-weather-norway\r\n"]]);
+    imagefilledrectangle($sheet, 0, 0, imagesx($sheet), imagesy($sheet), 0xFF00FF);
+    $context = stream_context_create(['http' => ['timeout' => 6, 'header' => "User-Agent: kindle-weather-norway/" . APP_VERSION . "\r\n"]]);
     for ($ty = $firstY; $ty <= $lastY; $ty++) {
         for ($tx = $firstX; $tx <= $lastX; $tx++) {
-            $png = @file_get_contents(sprintf($pattern, $zoom, $ty, $tx), false, $context);
+            $png = @file_get_contents(sprintf($pattern, $zoom, $tx, $ty), false, $context);
             $tile = $png === false ? false : @imagecreatefromstring($png);
             if ($tile === false) {
                 return null;
@@ -140,8 +169,10 @@ function kartverket_map(array $config, int $radius, int $size): ?\GdImage
         (int) round(2 * $half)
     );
 
-    // Water is whatever is clearly more blue than red.
+    // Water is whatever is clearly more blue than red. Places without data
+    // (magenta) are drawn as water too: off Norway's coast that is open sea.
     $water = [];
+    $missing = 0;
     for ($y = 0; $y < $n; $y++) {
         $row = '';
         for ($x = 0; $x < $n; $x++) {
@@ -149,7 +180,9 @@ function kartverket_map(array $config, int $radius, int $size): ?\GdImage
             $r = ($rgb >> 16) & 0xFF;
             $g = ($rgb >> 8) & 0xFF;
             $b = $rgb & 0xFF;
-            $row .= ($b - $r >= WATER_BLUENESS && $b >= $g - 4) ? '1' : '0';
+            $noData = $r > 200 && $b > 200 && $g < 90;
+            $missing += $noData ? 1 : 0;
+            $row .= ($noData || ($b - $r >= WATER_BLUENESS && $b >= $g - 4)) ? '1' : '0';
         }
         $water[] = $row;
     }
@@ -174,13 +207,18 @@ function kartverket_map(array $config, int $radius, int $size): ?\GdImage
 
     $map = imagecreatetruecolor($size, $size);
     imagecopyresampled($map, $silhouette, 0, 0, 0, 0, $size, $size, $n, $n);
-    return $map;
+    return ['map' => $map, 'missing' => $missing / ($n * $n)];
 }
 
-/** The coarse fallback map: light gray land, white sea and lakes. Null without map/coast.json. */
+/**
+ * The coarse fallback map: light gray land, white sea and lakes. The Nordic
+ * area has its own, more detailed outline; the rest of the world a coarser
+ * one. Null without the outline file.
+ */
 function coast_map(array $config, int $radius, int $size): ?\GdImage
 {
-    $coast = json_decode(read_file(dirname($config['icon_dir']) . '/map/coast.json'), true);
+    $nordic = $config['lat'] > 54.5 && $config['lat'] < 71.5 && $config['lon'] > 3.5 && $config['lon'] < 32.5;
+    $coast = json_decode(read_file(dirname($config['icon_dir']) . '/map/' . ($nordic ? 'coast.json' : 'coast-world.json')), true);
     if (!is_array($coast)) {
         return null;
     }
@@ -195,14 +233,15 @@ function coast_map(array $config, int $radius, int $size): ?\GdImage
     $degrees = $radius / 111.0 * 1.6;                       // generous box, in degrees of latitude
     $draw = function (array $rings, int $fill) use ($map, $config, $scale, $size, $degrees, $shore): void {
         foreach ($rings as $ring) {
-            $near = false;
-            foreach ($ring as [$lon, $lat]) {
-                if (abs($lat - $config['lat']) < $degrees && abs($lon - $config['lon']) < $degrees * 2.2) {
-                    $near = true;
-                    break;
-                }
-            }
-            if (!$near || count($ring) < 3) {
+            // Skip shapes that lie wholly outside the map. A shape that surrounds
+            // it (the mainland, seen from an inland town) has no corner nearby
+            // but must still be drawn, so the test is on the shape's extent.
+            $lons = array_column($ring, 0);
+            $lats = array_column($ring, 1);
+            $near = count($ring) >= 3
+                && min($lats) < $config['lat'] + $degrees && max($lats) > $config['lat'] - $degrees
+                && min($lons) < $config['lon'] + $degrees * 2.2 && max($lons) > $config['lon'] - $degrees * 2.2;
+            if (!$near) {
                 continue;
             }
             $points = [];

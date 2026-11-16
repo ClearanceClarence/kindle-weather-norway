@@ -234,6 +234,43 @@ function summarize_day(array $series, int $now, int $offset): ?array
     ];
 }
 
+/**
+ * When the sun rises and sets during the hours the meteogram covers, so it
+ * can shade the night.
+ *
+ * @return array{dark: bool, events: list<array{t: int, up: bool}>} whether
+ *         the sun is down at the first hour, then each sunrise (up) and sunset
+ */
+function graph_sun(array $points, array $config): array
+{
+    $from = $points[0]['t'];
+    $to = $points[count($points) - 1]['t'];
+    $events = [];
+    for ($day = $from - 86400; $day <= $to + 86400; $day += 86400) {
+        $sun = date_sun_info($day, $config['lat'], $config['lon']);
+        foreach (['sunrise' => true, 'sunset' => false] as $key => $up) {
+            if (is_int($sun[$key]) && $sun[$key] > $from && $sun[$key] < $to) {
+                $events[$sun[$key]] = $up;
+            }
+        }
+    }
+    ksort($events);
+
+    if ($events !== []) {
+        $dark = reset($events);                 // a sunrise comes first: it is dark until then
+    } else {
+        $sun = date_sun_info($from, $config['lat'], $config['lon']);
+        $dark = is_int($sun['sunrise']) && is_int($sun['sunset'])
+            ? ($from < $sun['sunrise'] || $from > $sun['sunset'])
+            : $sun['sunrise'] === false;        // false = polar night, true = midnight sun
+    }
+    $list = [];
+    foreach ($events as $time => $up) {
+        $list[] = ['t' => $time, 'up' => $up];
+    }
+    return ['dark' => $dark, 'events' => $list];
+}
+
 /** Sunrise and sunset, calculated locally (no request to MET). */
 function sun_times(int $now, array $config): array
 {
@@ -279,6 +316,7 @@ function build_model(array $forecast, int $fetched, array $config): array
     }
     $sun = sun_times($now, $config);
 
+    $graph = graph_points($byTime, $current);
     return [
         'place'    => [$config['place'], $config['area'] ?? ''],
         'date'     => date_text($now),
@@ -298,7 +336,8 @@ function build_model(array $forecast, int $fetched, array $config): array
         'hourly'   => next_hours($byTime, $current),
         'hours'    => hour_rows($byTime, $current),
         'byTime'   => $byTime,            // for render_request(); removed before drawing
-        'graph'    => graph_points($byTime, $current),
+        'graph'    => $graph,
+        'graphSun' => $graph === [] ? [] : graph_sun($graph, $config),
         'today'    => summarize_day($series, $now, 0),
         'daily'    => $daily,
         'hint'     => build_hint($current['temp'], $feels, $today['hi'], $today['lo'], $today['rain'], $current['gust'], $today['uvMax']),

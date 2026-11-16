@@ -6,6 +6,12 @@ declare(strict_types=1);
  * Loads the code and the configuration. Used by index.php and by the tools.
  */
 
+// The version of this release: "v" and the release date, vYYYYMMDD. A second
+// release on the same day adds ".2". The Kindle script's SCRIPT_VERSION is
+// the release it last changed in.
+const APP_VERSION = 'v20261116.3';
+const VERSION_PATTERN = '/^v\d{8}(\.\d{1,2})?$/';
+
 require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/fonts.php';

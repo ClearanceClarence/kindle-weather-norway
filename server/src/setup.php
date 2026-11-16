@@ -56,6 +56,28 @@ function site_url(): ?string
     return ($https ? 'https' : 'http') . '://' . $host . $path;
 }
 
+/** The version of the Kindle script that this server hands out, or '' when the file is missing. */
+function script_version(string $serverDir): string
+{
+    preg_match('/^SCRIPT_VERSION=(\S+)/m', read_file($serverDir . '/kindle/kindle-weather.sh'), $match);
+    return preg_match(VERSION_PATTERN, $match[1] ?? '') === 1 ? $match[1] : '';
+}
+
+/**
+ * The version of the script the Kindle runs: it says so each time it asks
+ * for its settings. Give $reported to store it; returns the last one stored,
+ * or '' when the Kindle has not said (a script from before v20261116).
+ */
+function kindle_version(array $config, ?string $reported = null): string
+{
+    $file = $config['cache_dir'] . '/kindle_version.txt';
+    if ($reported !== null && preg_match(VERSION_PATTERN, $reported) === 1 && is_dir($config['cache_dir'])) {
+        @file_put_contents($file, $reported, LOCK_EX);
+    }
+    $stored = trim(read_file($file));
+    return preg_match(VERSION_PATTERN, $stored) === 1 ? $stored : '';
+}
+
 /**
  * The Kindle script with SERVER_URL set to $url, ready to copy to the
  * Kindle. Null if the script is missing or has no SERVER_URL line.

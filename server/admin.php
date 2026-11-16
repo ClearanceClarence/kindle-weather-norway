@@ -376,7 +376,7 @@ ob_start('translate_admin_page');
 
     <section>
       <h2>Faner</h2>
-      <p class="hint">Fanene nederst på skjermen, og hvilken som vises først.</p>
+      <p class="hint">Fanene nederst på skjermen, og hvilken som vises først. Skjermen kan også gå gjennom fanene av seg selv, én for hver oppdatering.</p>
       <div class="checks">
         <?php foreach (TAB_LABELS as $key => $label): ?>
         <label><input type="checkbox" name="tabs[]" value="<?= e($key) ?>" <?= in_array($key, $form['tabs'], true) ? 'checked' : '' ?>> <?= e(t($label)) ?></label>
@@ -390,6 +390,10 @@ ob_start('translate_admin_page');
             <?php endforeach; ?>
           </select>
         </label>
+      </div>
+      <div class="row" style="margin-top: 10px">
+        <label class="check"><input type="checkbox" name="rotate" value="1" <?= $form['rotate'] ? 'checked' : '' ?>> Bytt til neste fane ved hver oppdatering</label>
+        <label class="check"><input type="checkbox" name="rotate_flights" value="1" <?= $form['rotate_flights'] ? 'checked' : '' ?>> Ta med flyskjermen i runden</label>
       </div>
     </section>
 
@@ -415,6 +419,10 @@ ob_start('translate_admin_page');
         <label class="check"><input type="checkbox" name="flights" value="1" <?= $form['flights'] ? 'checked' : '' ?>> Vis flyknappen</label>
         <label>Rekkevidde <small>km, 10–200</small><input type="number" name="flight_radius" min="10" max="200" required value="<?= e($form['flight_radius']) ?>"></label>
       </div>
+      <div class="row" style="margin-top: 10px">
+        <label class="check"><input type="checkbox" name="flight_home" value="1" <?= $form['flight_home'] ? 'checked' : '' ?>> Vis hus midt på kartet</label>
+        <label class="check"><input type="checkbox" name="flight_airports" value="1" <?= $form['flight_airports'] ? 'checked' : '' ?>> Vis flyplasser</label>
+      </div>
     </section>
 
     <section>
@@ -428,11 +436,12 @@ ob_start('translate_admin_page');
 
     <section>
       <h2>Lys</h2>
-      <p class="hint">Frontlyset bruker batteri. Styrke 0 holder det av hele døgnet.</p>
+      <p class="hint">Frontlyset bruker batteri. Styrke 0 holder det av hele døgnet. Når Kindle står til lading, kan lyset være sterkere: da er det på hele dagen, unntatt i stilletiden.</p>
       <div class="row">
         <label>Lysstyrke <small>0–24, 0 = av</small><input type="number" name="light_level" min="0" max="24" required value="<?= e($form['light_level']) ?>"></label>
         <label>På fra <small>time, 0–24</small><input type="number" name="light_from" min="0" max="24" required value="<?= e($form['light_from']) ?>"></label>
         <label>På til <small>time, 0–24</small><input type="number" name="light_to" min="0" max="24" required value="<?= e($form['light_to']) ?>"></label>
+        <label>Ved lading <small>0–24, 0 = ingen forskjell</small><input type="number" name="light_charging" min="0" max="24" required value="<?= e($form['light_charging']) ?>"></label>
       </div>
     </section>
 
@@ -468,6 +477,11 @@ ob_start('translate_admin_page');
       <a class="button" href="admin.php?download=script">Last ned kindle-weather.sh</a>
       <p class="hint" style="margin: 10px 0 0">Filen bruker adressen <b><?= e(site_url() ?? 'ukjent') ?></b></p>
       <p class="hint" style="margin: 10px 0 0">Trykk på det svake krysset øverst til høyre på Kindle for å lukke.</p>
+      <?php $onKindle = kindle_version($config); $offered = script_version(__DIR__); ?>
+      <p class="hint" style="margin: 10px 0 0"><?= e(t('Versjon: server ') . APP_VERSION . t(' · Kindle kjører ') . ($onKindle !== '' ? $onKindle : t('ukjent'))) ?></p>
+      <?php if ($onKindle !== '' && $offered !== '' && $onKindle !== $offered): ?>
+      <p class="hint" style="margin: 6px 0 0"><b><?= e(t('Kindle kjører ikke samme versjon som filen her. Last ned filen på nytt, kopier den til Kindle, og start skjermen på nytt.')) ?></b></p>
+      <?php endif; ?>
     </div>
   </aside>
   </div>

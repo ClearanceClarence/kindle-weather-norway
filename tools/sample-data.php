@@ -163,4 +163,18 @@ function write_sample_flights(array $config, bool $empty = false): void
         file_put_contents($config['cache_dir'] . '/route_vrs_' . $call . '.json', '[]');
     }
     remove_file($config['cache_dir'] . '/flight_state.json');
+
+    // Where the nearest aircraft has been: a gently bending line back toward the northeast.
+    $trail = [];
+    if (!$empty) {
+        for ($i = 9; $i >= 1; $i--) {
+            $east = 12 * sin(deg2rad(232)) + $i * 5.5 * sin(deg2rad(56 - $i * 2.2));
+            $north = 12 * cos(deg2rad(232)) + $i * 5.5 * cos(deg2rad(56 - $i * 2.2));
+            $trail[] = [
+                round($config['lat'] + $north / 111.2, 4),
+                round($config['lon'] + $east / (111.2 * cos(deg2rad($config['lat']))), 4),
+            ];
+        }
+    }
+    file_put_contents($config['cache_dir'] . '/flight_tracks.json', json_encode(['478000' => ['seen' => time(), 'points' => $trail]]));
 }

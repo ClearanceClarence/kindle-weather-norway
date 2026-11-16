@@ -63,6 +63,12 @@ FLIGHTS=1                  # 1 = show the plane button
 FLIGHT_INTERVAL_SEC=60     # seconds between refreshes while the flight screen is open
 FLIGHT_TIMEOUT_MIN=15      # go back to the weather by itself after this long
 
+# Rotation: 1 = each scheduled refresh shows the next tab instead of the same
+# one. ROTATE_FLIGHTS=1 gives the flight screen a turn too, after the last tab.
+# Normally set on the admin page.
+ROTATE=0
+ROTATE_FLIGHTS=0
+
 # Design shown on first start. After that the Kindle remembers the tab you
 # picked last.
 DEFAULT_VIEW=now
@@ -86,6 +92,9 @@ LIGHT_CONTROL=1
 LIGHT_FROM=16
 LIGHT_TO=24
 LIGHT_LEVEL=0
+# While the Kindle is charging, the light can be brighter: battery is no concern.
+# It is then on all day at this level (1-24), except in quiet hours. 0 = no difference.
+LIGHT_CHARGING=10
 
 # ---- End of settings ----------------------------------------------------------
 
@@ -102,14 +111,16 @@ RUN=/var/tmp/kindle-weather.sh          # the running copy of this script
 PIDFILE=/var/tmp/kindle-weather.pid
 
 # Tap areas, in screen pixels (1072 x 1448). They mirror the layout the
-# server draws; see TAB_TOP and draw_header() in the server's src/layout.php.
+# server draws; see BAR_TOP and draw_header() in the server's src/layout.php.
 CLOSE_MIN_X=860                     # close button: right of this ...
 CLOSE_MAX_Y=220                     # ... and above this
 TABS_MIN_Y=1310                     # tab bar: below this
 TABS_LEFT=64                        # the tab bar starts here ...
 TABS_WIDTH=944                      # ... and is this wide
+SCRIPT_VERSION=v20261116.3          # vYYYYMMDD, the release date; written to the log and reported to the server
+POWER_SUPPLIES=/sys/class/power_supply   # where the kernel lists the battery and chargers
 SWIPE_MIN=150                       # a finger must move this far up or down to count as a swipe
-FLIGHT_BTN_WIDTH=130                # the plane button: this much of the tab bar's right end
+FLIGHT_BTN_WIDTH=92                 # the round plane button and the gap before it, at the bar's right end
 REFRESH_MAX_Y=760                   # tap-to-refresh: between the header and this
 
 # ==============================================================================
@@ -139,11 +150,29 @@ battery() {
     echo "$b"
 }
 
-# Waits up to a minute for Wi-Fi.
+# True when the Kindle is connected to a Wi-Fi network.
+wifi_connected() {
+    [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ]
+}
+
+# Waits up to a minute for Wi-Fi. After hours without traffic (the night) the
+# Kindle can drop the connection and not pick it up again by itself, so
+# when waiting does not help it is told to reconnect: first gently, then by
+# switching Wi-Fi off and on.
 wait_wifi() {
     i=0
     while [ "$i" -lt 30 ]; do
-        [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ] && return 0
+        wifi_connected && return 0
+        if [ "$i" = 5 ]; then
+            log "wifi: not connected, asking the Kindle to reconnect"
+            lipc-set-prop com.lab126.cmd wirelessEnable 1 2>/dev/null
+            wpa_cli -i wlan0 reconnect >/dev/null 2>&1
+        elif [ "$i" = 15 ]; then
+            log "wifi: still not connected, switching Wi-Fi off and on"
+            lipc-set-prop com.lab126.cmd wirelessEnable 0 2>/dev/null
+            sleep 3
+            lipc-set-prop com.lab126.cmd wirelessEnable 1 2>/dev/null
+        fi
         sleep 2
         i=$((i + 1))
     done
@@ -167,7 +196,8 @@ fetch() {
 }
 
 # show FILE [full] - draws an image. "full" flashes the screen; otherwise the
-# update is quiet, with a flash every FULL_REFRESH_EVERY times to clear ghosting.
+# update is quiet, with a flash every FULL_REFRESH_EVERY draws (taps and
+# scheduled refreshes alike) to clear ghosting.
 DRAWS=0
 show() {
     DRAWS=$((DRAWS + 1))
@@ -199,9 +229,9 @@ load_server_settings() {
     file="$DIR/server-settings.txt"
     rm -f "$file.tmp"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsS -m 30 -o "$file.tmp" "$SERVER_URL?view=settings" 2>>"$LOG" || return 1
+        curl -fsS -m 30 -o "$file.tmp" "$SERVER_URL?view=settings&ver=$SCRIPT_VERSION" 2>>"$LOG" || return 1
     else
-        wget -q -T 30 -O "$file.tmp" "$SERVER_URL?view=settings" 2>>"$LOG" || return 1
+        wget -q -T 30 -O "$file.tmp" "$SERVER_URL?view=settings&ver=$SCRIPT_VERSION" 2>>"$LOG" || return 1
     fi
     while IFS='=' read -r key value; do
         case "$value" in
@@ -221,7 +251,10 @@ load_server_settings() {
                     LIGHT_LEVEL)        LIGHT_LEVEL=$value ;;
                     LIGHT_FROM)         LIGHT_FROM=$value ;;
                     LIGHT_TO)           LIGHT_TO=$value ;;
+                    LIGHT_CHARGING)     LIGHT_CHARGING=$value ;;
                     FLIGHTS)            FLIGHTS=$value ;;
+                    ROTATE)             ROTATE=$value ;;
+                    ROTATE_FLIGHTS)     ROTATE_FLIGHTS=$value ;;
                 esac
                 ;;
         esac
@@ -269,10 +302,8 @@ refresh_flights() {
     base=${SERVER_URL%index.php}
     case "$base" in */) ;; *) base="$base/" ;; esac
     query="interval=$INTERVAL_MIN$(common_query)"
-    opened=0
     if [ -f "$DIR/flights_open" ]; then
         rm -f "$DIR/flights_open"
-        opened=1
         query="$query&open=1"
     fi
     if [ -f "$DIR/tap" ]; then
@@ -284,13 +315,7 @@ refresh_flights() {
         esac
     fi
     if fetch "${base}flights.php?$query" "$DIR/flights.png"; then
-        # Flash when the screen is first opened; after that update quietly,
-        # so a refresh every minute does not flicker.
-        if [ "$opened" = 1 ] || [ "$STATE" != flights ]; then
-            show "$DIR/flights.png" full
-        else
-            show "$DIR/flights.png"
-        fi
+        show "$DIR/flights.png"
         STATE=flights
         log "refreshed flights"
         return 0
@@ -301,7 +326,7 @@ refresh_flights() {
 
 # Closes the flight screen, so the next refresh shows the weather again.
 leave_flights() {
-    rm -f "$DIR/mode" "$DIR/tap" "$DIR/flights_open"
+    rm -f "$DIR/mode" "$DIR/tap" "$DIR/flights_open" "$DIR/flights_turn"
     log "leaving the flight screen"
 }
 
@@ -323,21 +348,26 @@ refresh() {
         return
     fi
     if [ "$1" != quick ]; then
-        wait_wifi || log "wifi not connected, trying anyway"
+        # The main loop has already fetched the settings ("loaded") when it
+        # needed them to decide what to show.
+        if [ "$1" != loaded ]; then
+            wait_wifi || log "wifi not connected, trying anyway"
+            load_server_settings
+        fi
         # A scheduled refresh goes back to the first page: the hours have moved on.
         rm -f "$DIR/page"
-        load_server_settings
         load_view
     fi
     query="interval=$INTERVAL_MIN&view=$VIEW&page=$PAGE$(common_query)"
 
     if fetch "$SERVER_URL?$query" "$DIR/weather.png"; then
-        # Flash when the whole picture changes: after a tap, or coming back
-        # from the night or no-connection screen.
-        if [ "$1" = quick ] || [ "$STATE" != ok ]; then
-            show "$DIR/weather.png" full
-        else
+        # Flash only when coming back from the night or no-connection screen,
+        # or at start. Taps and scheduled refreshes update quietly; show()
+        # still flashes every FULL_REFRESH_EVERY draws to clear ghosting.
+        if [ "$STATE" = ok ] || [ "$STATE" = flights ]; then
             show "$DIR/weather.png"
+        else
+            show "$DIR/weather.png" full
         fi
         STATE=ok
         # On scheduled refreshes, also store the "no connection" screen for
@@ -380,7 +410,45 @@ night() {
     fi
 }
 
-# Sets the front light for the time of day.
+# True while the Kindle is connected to power, and sets POWER_SIGN to what
+# said so. Kindle models report this in different places, so several are
+# tried: the power service's own answer, its status text, the battery's
+# "charging" file, and a charger that reports itself as connected.
+#
+# A battery also has a file called "online", but there it only means that
+# the battery is present, so supplies of the type Battery are skipped.
+on_power() {
+    POWER_SIGN=""
+    if [ "$(lipc-get-prop com.lab126.powerd isCharging 2>/dev/null)" = 1 ]; then
+        POWER_SIGN="isCharging"
+    elif lipc-get-prop com.lab126.powerd status 2>/dev/null | grep -qi 'charging: *yes'; then
+        POWER_SIGN="powerd status"
+    else
+        for supply in "$POWER_SUPPLIES"/*; do
+            if [ "$(cat "$supply/charging" 2>/dev/null)" = 1 ]; then
+                POWER_SIGN="$supply/charging"
+            elif [ "$(cat "$supply/type" 2>/dev/null)" != Battery ] && [ -r "$supply/type" ] \
+                && [ "$(cat "$supply/online" 2>/dev/null)" = 1 ]; then
+                POWER_SIGN="$supply/online"
+            fi
+        done
+    fi
+    [ -n "$POWER_SIGN" ]
+}
+
+# Writes what the Kindle says about power to the log, to show which of the
+# places above this model uses.
+log_power() {
+    log "power: isCharging=$(lipc-get-prop com.lab126.powerd isCharging 2>&1 | head -n 1)"
+    log "power: status=$(lipc-get-prop com.lab126.powerd status 2>&1 | tr '\n' ';' | cut -c1-300)"
+    for supply in "$POWER_SUPPLIES"/*; do
+        [ -d "$supply" ] || continue
+        log "power: $supply type=$(cat "$supply/type" 2>/dev/null) online=$(cat "$supply/online" 2>/dev/null) charging=$(cat "$supply/charging" 2>/dev/null) status=$(cat "$supply/status" 2>/dev/null)"
+    done
+    log "light: control=$LIGHT_CONTROL level=$LIGHT_LEVEL from=$LIGHT_FROM to=$LIGHT_TO charging=$LIGHT_CHARGING quiet=$QUIET_START-$QUIET_END"
+}
+
+# Sets the front light for the time of day, brighter while charging.
 apply_light() {
     [ "$LIGHT_CONTROL" = 1 ] || return 0
     h=$(hour_now)
@@ -388,8 +456,14 @@ apply_light() {
     if ! is_quiet && [ "$h" -ge "$LIGHT_FROM" ] && [ "$h" -lt "$LIGHT_TO" ]; then
         level=$LIGHT_LEVEL
     fi
+    why=""
+    if ! is_quiet && [ "$LIGHT_CHARGING" -gt "$level" ] && on_power; then
+        level=$LIGHT_CHARGING
+        why="on power: $POWER_SIGN"
+    fi
     if [ "$level" != "$LIGHT_NOW" ]; then
         lipc-set-prop com.lab126.powerd flIntensity "$level" 2>/dev/null
+        log "front light set to $level${why:+ ($why)}"
         LIGHT_NOW=$level
     fi
 }
@@ -618,9 +692,9 @@ cleanup() {
 trap cleanup TERM INT
 trap 'SWITCH=1' USR1
 
-rm -f "$DIR/mode" "$DIR/tap" "$DIR/flights_open"      # always start on the weather
+rm -f "$DIR/mode" "$DIR/tap" "$DIR/flights_open" "$DIR/flights_turn"      # always start on the weather
 echo $$ > "$PIDFILE"
-log "started (interval $INTERVAL_MIN min, server $SERVER_URL)"
+log "started (version $SCRIPT_VERSION, interval $INTERVAL_MIN min, server $SERVER_URL)"
 load_view
 
 # Give the scriptlet launcher a moment to finish with the screen, so it does
@@ -664,6 +738,7 @@ fi
 # waits until the picture is safely up, because the library paints over it
 # for as long as the Kindle's interface is running.
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
+log_power
 apply_light
 
 if [ "$STOP_GUI" = 1 ]; then
@@ -691,6 +766,46 @@ elif [ "$TOUCH_CONTROLS" = 1 ]; then
     log "no touchscreen device found, touch controls disabled"
 fi
 
+# Prints what the rotation shows next: the tab after the one on screen, or
+# "flights" after the last tab when the flight screen takes part.
+next_turn() {
+    turns=$TABS
+    [ "$ROTATE_FLIGHTS" = 1 ] && flights_on && turns="$turns flights"
+    load_view
+    current=$VIEW
+    [ -f "$DIR/flights_turn" ] && current=flights
+    first=""
+    found=0
+    for turn in $turns; do
+        [ -z "$first" ] && first=$turn
+        if [ "$found" = 1 ]; then
+            echo "$turn"
+            return
+        fi
+        [ "$turn" = "$current" ] && found=1
+    done
+    echo "$first"
+}
+
+# A scheduled refresh while rotating: shows the next tab, or gives the
+# flight screen its turn. The file "flights_turn" marks a flight screen that
+# is only there for its turn, so it stays one interval and is then replaced.
+rotate() {
+    turn=$(next_turn)
+    if in_flights; then
+        leave_flights
+    fi
+    if [ "$turn" = flights ]; then
+        date +%s > "$DIR/mode"
+        : > "$DIR/flights_open"
+        : > "$DIR/flights_turn"
+        refresh_flights
+    else
+        echo "$turn" > "$DIR/view"
+        refresh loaded
+    fi
+}
+
 # ==============================================================================
 # 6. Main loop
 # ==============================================================================
@@ -699,7 +814,8 @@ while true; do
     # Sleep until the next refresh; a tap (USR1) cuts the wait short.
     if [ "$SWITCH" != 1 ]; then
         pause=$((INTERVAL_MIN * 60))
-        in_flights && pause=$FLIGHT_INTERVAL_SEC
+        # The flight screen refreshes every minute, except when it is only having its turn in the rotation.
+        in_flights && [ ! -f "$DIR/flights_turn" ] && pause=$FLIGHT_INTERVAL_SEC
         sleep "$pause" &
         SLEEP_PID=$!
         wait "$SLEEP_PID"
@@ -713,15 +829,25 @@ while true; do
         SWITCH=0
         load_view
         refresh quick
-    elif in_flights && { flights_expired || is_quiet; }; then
+    elif in_flights && { is_quiet || { [ ! -f "$DIR/flights_turn" ] && flights_expired; }; }; then
         # Left open: go back to the weather rather than polling all night.
         leave_flights
         if is_quiet; then night; else refresh quick; fi
-    elif in_flights; then
+    elif in_flights && [ ! -f "$DIR/flights_turn" ]; then
         refresh_flights
     elif is_quiet; then
         night
     else
-        refresh
+        # The settings are fetched before deciding, so that switching the
+        # rotation on or off on the admin page works from the very next refresh.
+        wait_wifi || log "wifi not connected, trying anyway"
+        load_server_settings
+        if [ "$ROTATE" = 1 ]; then
+            rotate
+        else
+            # Rotation was switched off while the flight screen had its turn.
+            [ -f "$DIR/flights_turn" ] && leave_flights
+            refresh loaded
+        fi
     fi
 done

@@ -52,6 +52,8 @@ const SETTING_DEFAULTS = [
     // Tabs along the bottom, in order, and the one shown first.
     'tabs'               => ['now', 'big', 'graph', 'week', 'hours'],
     'default_view'       => 'now',
+    'rotate'             => false,   // show the next tab at every refresh
+    'rotate_flights'     => false,   // the flight screen takes a turn in the rotation too
     // Settings the Kindle reads on every refresh (see device_settings_text).
     'interval'           => 10,      // minutes between refreshes
     'quiet_start'        => 0,       // quiet hours, 24-hour clock; equal = off
@@ -59,11 +61,14 @@ const SETTING_DEFAULTS = [
     'full_refresh_every' => 6,       // every Nth refresh flashes the screen
     'flights'            => true,    // show the button for the flight screen
     'flight_radius'      => 50,      // how far the flight screen looks, in km
+    'flight_home'        => true,    // mark home on the flight map with a house; false = a small ring
+    'flight_airports'    => true,    // show airports on the flight map
     'aurora'             => true,    // show a notice when northern lights are possible
     'aurora_kp'          => 5,       // ... which means a forecast Kp of at least this
     'light_level'        => 0,       // front light 0-24; 0 = always off
     'light_from'         => 16,
     'light_to'           => 24,
+    'light_charging'     => 10,      // front light while the Kindle is charging; 0 = no difference
 ];
 
 function store_file(string $serverDir): string
@@ -176,11 +181,16 @@ function validate_settings(array $input, array &$errors, array $fonts = FONTS): 
     $out['full_refresh_every'] = $int('full_refresh_every', 1, 20, 'Full oppfrisking');
     $out['light_level']        = $int('light_level', 0, 24, 'Lysstyrke');
     $out['flights']            = !empty($input['flights']);
+    $out['rotate']             = !empty($input['rotate']);
+    $out['rotate_flights']     = !empty($input['rotate_flights']);
+    $out['flight_home']        = !empty($input['flight_home']);
+    $out['flight_airports']    = !empty($input['flight_airports']);
     $out['flight_radius']      = $int('flight_radius', 10, 200, 'Rekkevidde for fly');
     $out['aurora']             = !empty($input['aurora']);
     $out['aurora_kp']          = $int('aurora_kp', 3, 9, 'Kp-grense');
     $out['light_from']         = $int('light_from', 0, 24, 'Lys fra');
     $out['light_to']           = $int('light_to', 0, 24, 'Lys til');
+    $out['light_charging']     = $int('light_charging', 0, 24, 'Lys ved lading');
     return $out;
 }
 
@@ -200,7 +210,10 @@ function device_settings_text(array $config): string
         'LIGHT_LEVEL'        => $config['light_level'],
         'LIGHT_FROM'         => $config['light_from'],
         'LIGHT_TO'           => $config['light_to'],
+        'LIGHT_CHARGING'     => $config['light_charging'],
         'FLIGHTS'            => $config['flights'] ? 1 : 0,
+        'ROTATE'             => $config['rotate'] ? 1 : 0,
+        'ROTATE_FLIGHTS'     => $config['rotate_flights'] ? 1 : 0,
         'LANGUAGE'           => $config['language'],
     ];
     $text = '';

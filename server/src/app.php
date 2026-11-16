@@ -107,7 +107,10 @@ function render_flight_request(array $config, array $query): string
     [$index, $tapped] = $aircraft ? select_aircraft($aircraft, $state, $tap, ($query['open'] ?? '') === '1') : [0, false];
     $route = $aircraft ? load_route($config, $aircraft[$index]) : null;
 
-    [$png, $drawn] = render_flights($aircraft, $index, $tapped, $route, $request, $config);
+    $tracks = $aircraft ? record_tracks($config, $aircraft) : [];
+    $trail = $aircraft ? ($tracks[$aircraft[$index]['id']] ?? []) : [];
+
+    [$png, $drawn] = render_flights($aircraft, $index, $tapped, $route, $request, $config, $trail);
     flight_state($config, ['selected' => $tapped ? $aircraft[$index]['id'] : '', 'drawn' => $drawn]);
     return $png;
 }
@@ -120,6 +123,7 @@ function render_flight_request(array $config, array $query): string
 function status_text(array $config): string
 {
     $lines = [
+        'Versjon ' . APP_VERSION . ', Kindle-skript: ' . (kindle_version($config) ?: 'ukjent'),
         'PHP ' . PHP_VERSION . ', FreeType: ' . (function_exists('imagettftext') ? 'ja' : 'NEI'),
         'Sted satt opp: ' . ($config['lat'] === null ? 'NEI' : 'ja'),
         'Skrift: ' . ($config['fonts'][$config['font']]['google'] ? 'fra Google Fonts' : $config['font']) . ', ikoner: ' . $config['icon_set'],

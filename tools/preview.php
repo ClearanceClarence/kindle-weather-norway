@@ -71,8 +71,10 @@ foreach ($screens as $name => [$queryString, $alert]) {
 }
 
 // The flight screen: just opened, after a tap on the helicopter, and an empty sky.
-// It is drawn on the coarse fallback map; a real server uses Kartverket's map.
-touch(sprintf('%s/map_v3_%.4F_%.4F_%d_%d_kartverket.failed', $config['cache_dir'], $config['lat'], $config['lon'], $config['flight_radius'], 4 * MAP_RADIUS));
+// It is drawn on the coarse fallback map; a real server uses Kartverket's map or OpenStreetMap.
+foreach (['kartverket', 'osm'] as $source) {
+    touch(sprintf('%s/map_v3_%.4F_%.4F_%d_%d_%s.failed', $config['cache_dir'], $config['lat'], $config['lon'], $config['flight_radius'], 4 * MAP_RADIUS, $source));
+}
 write_sample_flights($config);
 file_put_contents("$out/flights.png", render_flight_request($config, ['batt' => '84', 'x' => '1', 'open' => '1']));
 $state = flight_state($config);

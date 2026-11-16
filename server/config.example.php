@@ -21,6 +21,8 @@ return [
 
     // Optional settings, shown with their defaults:
     // 'language'    => 'no',     // 'no' (Norwegian) or 'en' (English)
+    // 'flight_home'     => true,   // a house in the middle of the flight map; false = a small ring
+    // 'flight_airports' => true,   // airports on the flight map
     // 'timezone'    => 'Europe/Oslo',
     // 'min_refetch' => 600,      // never ask MET more often than this (seconds)
     // 'cache_dir'   => __DIR__ . '/cache',

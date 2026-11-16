@@ -34,9 +34,10 @@ const FLIGHT_KIND_NAMES = [
  * @param int        $index    which aircraft the card is about
  * @param bool       $tapped   true when the user picked that aircraft with a tap
  * @param array|null $route    its route, when known
+ * @param array      $trail    where that aircraft has been seen, [[lat, lon], ...], oldest first
  * @return array{0: string, 1: array} the PNG, and where each aircraft was drawn (id => [x, y])
  */
-function render_flights(?array $aircraft, int $index, bool $tapped, ?array $route, array $request, array $config): array
+function render_flights(?array $aircraft, int $index, bool $tapped, ?array $route, array $request, array $config, array $trail = []): array
 {
     $canvas = new Canvas($config['width'], $config['height'], $config['font_dir']);
     $now = time();
@@ -54,7 +55,10 @@ function render_flights(?array $aircraft, int $index, bool $tapped, ?array $rout
     $map = basemap_file($config, $radius, 4 * MAP_RADIUS);
     if ($aircraft === null || $aircraft === []) {
         draw_flight_map($canvas, $map, $radius);
-        draw_airports($canvas, $config, $radius);
+        draw_home($canvas, $config['flight_home']);
+        if ($config['flight_airports']) {
+            draw_airports($canvas, $config, $radius);
+        }
         $canvas->plane(536, 960, 70, 45, FAINT);
         $canvas->text($aircraft === null ? t('Får ikke kontakt med flytjenesten') : t('Ingen fly akkurat nå'), 536, 1100, 54, 'Bold', INK, 'center');
         $canvas->text(
@@ -68,27 +72,34 @@ function render_flights(?array $aircraft, int $index, bool $tapped, ?array $rout
         );
     } else {
         draw_flight_map($canvas, $map, $radius);
-        $airports = draw_airports($canvas, $config, $radius);
-        $drawn = draw_aircraft($canvas, $aircraft, $index, $config, $radius, $airports);
+        $airports = $config['flight_airports'] ? draw_airports($canvas, $config, $radius) : [];
+        $drawn = draw_aircraft($canvas, $aircraft, $index, $config, $radius, $airports, $trail);
         draw_flight_card($canvas, $aircraft[$index], $tapped, $route, $config);
     }
 
-    $canvas->text($aircraft ? t('Trykk på et fly for å se det') : '', LEFT, 1312, 28, 'Medium', GRAY);
-    // Credit the map only when it is Kartverket's.
-    $credit = ($map !== null && str_ends_with($map, '_kartverket.png')) ? ' · © Kartverket' : '';
-    $canvas->text(t('Oppdatert ') . date('H:i', $now) . ' · adsb.lol' . $credit, RIGHT, 1312, 28, 'Medium', GRAY, 'right');
+    // Credit the map service the silhouette was made from.
+    $credit = match (true) {
+        $map !== null && str_ends_with($map, '_kartverket.png') => ' · © Kartverket',
+        $map !== null && str_ends_with($map, '_osm.png')        => ' · © OpenStreetMap',
+        default                                                 => '',
+    };
+    $hint = $aircraft ? t('Trykk på et fly for å se det') : '';
+    $canvas->text($hint, LEFT, 1312, 28, 'Medium', GRAY);
+    $status = t('Oppdatert ') . date('H:i', $now) . ' · adsb.lol' . $credit;
+    $room = CONTENT - $canvas->textWidth($hint, 28, 'Medium') - 30;
+    $canvas->text($status, RIGHT, 1312, $canvas->fit($status, 28, 'Medium', $room), 'Medium', GRAY, 'right');
 
     // Bottom bar: back to the weather, and the plane button shown as active.
     if ($request['touch']) {
-        $canvas->rect(LEFT, TAB_TOP, CONTENT, 3, INK);
-        $canvas->text(t('‹  Tilbake til været'), LEFT + (CONTENT - FLIGHT_BUTTON_WIDTH) / 2, TAB_TOP + 37, 36, 'Medium', INK, 'center');
-        $canvas->rect(RIGHT - FLIGHT_BUTTON_WIDTH, TAB_TOP, FLIGHT_BUTTON_WIDTH, TAB_HEIGHT, INK);
-        $canvas->plane(RIGHT - FLIGHT_BUTTON_WIDTH / 2, TAB_TOP + 36, 22, 45, PAPER);
+        $barWidth = CONTENT - FLIGHT_BUTTON_WIDTH;
+        $canvas->pillOutline(LEFT, BAR_TOP, $barWidth, BAR_HEIGHT, 3, LINE);
+        $canvas->text(t('‹  Tilbake til været'), LEFT + $barWidth / 2, BAR_TOP + BAR_HEIGHT / 2 + 1, 34, 'Medium', INK, 'center');
+        draw_flight_button($canvas, true);
     }
     return [$canvas->png(), $drawn];
 }
 
-/** The round map ($map is a picture file from basemap_file(), or null): land and sea, distance rings, compass letters, and home in the middle. */
+/** The round map ($map is a picture file from basemap_file(), or null): land and sea, distance rings and compass letters. */
 function draw_flight_map(Canvas $canvas, ?string $map, int $radius): void
 {
     $cx = MAP_CENTER_X;
@@ -121,8 +132,18 @@ function draw_flight_map(Canvas $canvas, ?string $map, int $radius): void
     foreach ([['N', 0, -1], [t('Ø'), 1, 0], ['S', 0, 1], [t('V'), -1, 0]] as [$letter, $dx, $dy]) {
         $canvas->text($letter, $cx + $dx * ($r + 28), $cy + $dy * ($r + 28), 32, 'Bold', INK, 'center');
     }
+}
 
-    // Home: a small house.
+/** Home, in the middle of the map: a small house, or just a ring when the house is switched off. */
+function draw_home(Canvas $canvas, bool $house): void
+{
+    $cx = MAP_CENTER_X;
+    $cy = MAP_CENTER_Y;
+    if (!$house) {
+        $canvas->disc($cx, $cy, 8, INK);
+        $canvas->disc($cx, $cy, 4, PAPER);
+        return;
+    }
     $canvas->disc($cx, $cy, 22, PAPER);
     $canvas->polygon([[$cx - 15, $cy + 1], [$cx, $cy - 15], [$cx + 15, $cy + 1]], INK);
     $canvas->rect($cx - 10, $cy + 1, 20, 12, INK);
@@ -173,13 +194,14 @@ function draw_airports(Canvas $canvas, array $config, int $radius): array
  * up: id => [x, y]. $airports are the boxes the airport labels occupy, which
  * call signs keep clear of. The selected one is drawn white on a black disc.
  */
-function draw_aircraft(Canvas $canvas, array $aircraft, int $index, array $config, int $radius, array $airports = []): array
+function draw_aircraft(Canvas $canvas, array $aircraft, int $index, array $config, int $radius, array $airports = [], array $trail = []): array
 {
     $scale = MAP_RADIUS / $radius;
     $drawn = [];
     // Boxes already used, as [left, top, right, bottom]: the house in the
     // middle and the compass letters, then each aircraft and call sign.
-    $taken = array_merge([[MAP_CENTER_X - 24, MAP_CENTER_Y - 24, MAP_CENTER_X + 24, MAP_CENTER_Y + 24]], $airports);
+    $home = $config['flight_home'] ? 24 : 12;
+    $taken = array_merge([[MAP_CENTER_X - $home, MAP_CENTER_Y - $home, MAP_CENTER_X + $home, MAP_CENTER_Y + $home]], $airports);
     foreach ([[0, -1], [1, 0], [0, 1], [-1, 0]] as [$dx, $dy]) {
         $lx = MAP_CENTER_X + $dx * (MAP_RADIUS + 28);
         $ly = MAP_CENTER_Y + $dy * (MAP_RADIUS + 28);
@@ -193,8 +215,11 @@ function draw_aircraft(Canvas $canvas, array $aircraft, int $index, array $confi
         $x = MAP_CENTER_X + $east * $scale * $shrink;
         $y = MAP_CENTER_Y - $north * $scale * $shrink;
         $drawn[$plane['id']] = [(int) round($x), (int) round($y)];
-        $taken[] = [$x - 26, $y - 26, $x + 26, $y + 26];
+        $taken[] = [$x - 22, $y - 22, $x + 22, $y + 22];
     }
+
+    draw_flight_path($canvas, $aircraft[$index], $drawn[$aircraft[$index]['id']], $trail, $config, $radius);
+    draw_home($canvas, $config['flight_home']);          // on top of the path, under the aircraft
 
     // The selected aircraft is drawn last, so it is never hidden.
     $order = array_keys($aircraft);
@@ -204,7 +229,7 @@ function draw_aircraft(Canvas $canvas, array $aircraft, int $index, array $confi
         [$x, $y] = $drawn[$plane['id']];
         $selected = $i === $index;
         if ($selected) {
-            $canvas->disc($x, $y, 36, INK);
+            $canvas->disc($x, $y, 31, INK);
         }
         $color = $selected ? PAPER : INK;
         $size = AIRCRAFT_SIZES[$plane['shape']];
@@ -215,7 +240,7 @@ function draw_aircraft(Canvas $canvas, array $aircraft, int $index, array $confi
     foreach (array_reverse($order) as $i) {
         $plane = $aircraft[$i];
         [$x, $y] = $drawn[$plane['id']];
-        $gap = $i === $index ? 46 : 34;
+        $gap = $i === $index ? 40 : 30;
         $w = $canvas->textWidth($plane['call'], 26, 'Bold');
         $spots = [
             [$x + $gap, $y - 16],                 // right
@@ -241,6 +266,72 @@ function draw_aircraft(Canvas $canvas, array $aircraft, int $index, array $confi
         }
     }
     return $drawn;
+}
+
+/**
+ * The path of the selected aircraft: a gray line with a dot for each place
+ * it has been seen, and a dashed arrow for where it is going if it keeps its
+ * heading. A short key under the map says which is which.
+ */
+function draw_flight_path(Canvas $canvas, array $plane, array $position, array $trail, array $config, int $radius): void
+{
+    [$x, $y] = $position;
+    $scale = MAP_RADIUS / $radius;
+    $onMap = fn(float $px, float $py) => hypot($px - MAP_CENTER_X, $py - MAP_CENTER_Y) < MAP_RADIUS - 6;
+    $clearOfIcon = 34;
+
+    $flown = [];
+    foreach ($trail as [$lat, $lon]) {
+        [$east, $north] = map_offset_km($config, (float) $lat, (float) $lon);
+        $px = MAP_CENTER_X + $east * $scale;
+        $py = MAP_CENTER_Y - $north * $scale;
+        if ($onMap($px, $py) && hypot($px - $x, $py - $y) > $clearOfIcon) {
+            $flown[] = [$px, $py];
+        }
+    }
+    if ($flown !== []) {
+        // Lead the line up to the aircraft, stopping short of its icon.
+        [$lastX, $lastY] = $flown[count($flown) - 1];
+        $gap = hypot($x - $lastX, $y - $lastY);
+        $line = array_merge($flown, [[$x + ($lastX - $x) * $clearOfIcon / $gap, $y + ($lastY - $y) * $clearOfIcon / $gap]]);
+        $canvas->stroke($line, 3.5, GRAY);
+        foreach ($flown as [$px, $py]) {
+            $canvas->disc($px, $py, 5, GRAY);
+        }
+    }
+
+    $ahead = $plane['speed'] >= 50;                  // a hovering helicopter has no heading worth drawing
+    if ($ahead) {
+        $dx = sin(deg2rad($plane['track']));
+        $dy = -cos(deg2rad($plane['track']));
+        $tip = null;
+        for ($distance = $clearOfIcon + 6; $onMap($x + $dx * ($distance + 34), $y + $dy * ($distance + 34)); $distance += 28) {
+            $tip = [$x + $dx * ($distance + 16), $y + $dy * ($distance + 16)];
+            $canvas->stroke([[$x + $dx * $distance, $y + $dy * $distance], $tip], 4, INK);
+        }
+        if ($tip !== null) {
+            $canvas->polygon([
+                [$tip[0] + $dx * 20, $tip[1] + $dy * 20],
+                [$tip[0] - $dy * 10, $tip[1] + $dx * 10],
+                [$tip[0] + $dy * 10, $tip[1] - $dx * 10],
+            ], INK);
+        }
+    }
+
+    $keyY = MAP_CENTER_Y + MAP_RADIUS + 44;
+    $keyX = LEFT;
+    if ($flown !== []) {
+        $canvas->stroke([[$keyX + 2, $keyY], [$keyX + 44, $keyY]], 3.5, GRAY);
+        $canvas->disc($keyX + 23, $keyY, 5, GRAY);
+        $canvas->text(t('har fløyet'), $keyX + 56, $keyY, 22, 'Medium', GRAY);
+        $keyX += 56 + $canvas->textWidth(t('har fløyet'), 22, 'Medium') + 30;
+    }
+    if ($ahead) {
+        foreach ([0, 18, 36] as $offset) {
+            $canvas->stroke([[$keyX + 2 + $offset, $keyY], [$keyX + 10 + $offset, $keyY]], 4, INK);
+        }
+        $canvas->text(t('holder kursen'), $keyX + 58, $keyY, 22, 'Medium', GRAY);
+    }
 }
 
 /**

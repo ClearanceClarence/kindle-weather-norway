@@ -6,3 +6,4 @@
 
 # Settings saved from the admin page, including the password hash.
 /server/data/
+/tools/__pycache__
